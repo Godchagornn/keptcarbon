@@ -140,3 +140,6 @@ vite.config.ts.timestamp-*
 
 # maxOS DS_Store files
 .DS_Store
+
+# SHP files
+TH_PROVINCE.gpkg
