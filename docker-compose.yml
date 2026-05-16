@@ -1,3 +1,7 @@
+networks:
+  keptcarbon:
+    name: keptcarbon
+
 services:
   # ── Next.js application ────────────────────────
   nextjs:
@@ -7,6 +11,8 @@ services:
     ports:
       - "3000:3000"
     container_name: keptcarbon-nextjs
+    networks:
+      - keptcarbon
     environment:
       - DATABASE_URL=${DATABASE_URL}
       - LINE_CHANNEL_ID=${LINE_CHANNEL_ID}
@@ -28,6 +34,8 @@ services:
     ports:
       - "4533:5432"
     container_name: keptcarbon-postgis
+    networks:
+      - keptcarbon
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
@@ -43,8 +51,10 @@ services:
     restart: unless-stopped
 
   backend:
-    build: ./backend  # Ensure this points to the folder containing your 'app' dir
+    build: ./backend
     platform: linux/arm64
+    networks:
+      - keptcarbon
     depends_on:
       postgis:
         condition: service_healthy
@@ -54,12 +64,11 @@ services:
       DATABASE_USER: ${POSTGRES_USER:-postgres}
       DATABASE_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
       DATABASE_NAME: ${POSTGRES_DB:-keptcarbon}
-      # Added PYTHONPATH to ensure app.services is discoverable
       PYTHONPATH: /app
     ports:
       - '8080:8000'
     volumes:
-      - ./backend:/app # Useful for live code reloading during dev
+      - ./backend:/app
     deploy:
       resources:
         limits:

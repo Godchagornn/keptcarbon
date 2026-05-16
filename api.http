@@ -158,6 +158,9 @@ Content-Type: application/json
 #   id           (required) unique identifier
 #   geometry     (required) GeoJSON Polygon or MultiPolygon (EPSG:4326)
 #   project_type (optional) e.g. "replanting" | "existing"
+#   output_crs   (optional) CRS for returned lu_polygon geometries
+#                  "EPSG:4326"  — WGS84 lon/lat (default, use for MapLibre / GeoJSON)
+#                  "EPSG:32647" — UTM Zone 47N in metres (easting/northing)
 #
 # Response: PlantationInfoResponse
 #   polygon_id, province_code, geometry, area_m2, status,
@@ -168,7 +171,7 @@ Content-Type: application/json
 #                  W (water), M (miscellaneous), OTHER
 # ----------------------------------------------------------------
 
-### 1.3a  Plantation info — basic polygon
+### 1.3a  Plantation info — default output (WGS84 lon/lat, for map display)
 POST {{backendUrl}}/api/v1/plantation-info
 Content-Type: application/json
 
@@ -177,20 +180,35 @@ Content-Type: application/json
   "geometry": {
     "type": "Polygon",
     "coordinates": [[[101.438, 12.807], [101.445, 12.809], [101.447, 12.802], [101.439, 12.800], [101.438, 12.807]]]
-  }
+  },
+  "output_crs": "EPSG:4326"
 }
 
-### 1.3b  Plantation info — with project_type
+### 1.3b  Plantation info — UTM output (EPSG:32647, coordinates in metres)
 POST {{backendUrl}}/api/v1/plantation-info
 Content-Type: application/json
 
 {
-  "id": "INFO_002_REPLANTING",
+  "id": "INFO_002_UTM",
   "geometry": {
     "type": "Polygon",
     "coordinates": [[[101.438, 12.807], [101.445, 12.809], [101.447, 12.802], [101.439, 12.800], [101.438, 12.807]]]
   },
-  "project_type": "replanting"
+  "output_crs": "EPSG:32647"
+}
+
+### 1.3c  Plantation info — with project_type
+POST {{backendUrl}}/api/v1/plantation-info
+Content-Type: application/json
+
+{
+  "id": "INFO_003_REPLANTING",
+  "geometry": {
+    "type": "Polygon",
+    "coordinates": [[[101.438, 12.807], [101.445, 12.809], [101.447, 12.802], [101.439, 12.800], [101.438, 12.807]]]
+  },
+  "project_type": "replanting",
+  "output_crs": "EPSG:4326"
 }
 
 ### 1.3c  Plantation info — MultiPolygon

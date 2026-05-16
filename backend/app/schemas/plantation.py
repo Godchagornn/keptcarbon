@@ -50,6 +50,10 @@ class PlantationInfoPolygon(BaseModel):
     id: str = Field(..., description="Unique ID from the frontend map")
     geometry: Dict[str, Any] = Field(..., description="GeoJSON Polygon or MultiPolygon")
     project_type: Optional[str] = Field(None, description="e.g. 'replanting', 'existing'")
+    output_crs: Optional[str] = Field(
+        "EPSG:4326",
+        description="CRS for returned geometry coordinates. 'EPSG:4326' = WGS84 lon/lat (default). 'EPSG:32647' = UTM Zone 47N (metres).",
+    )
 
 
 class PlantationInfoResponse(BaseModel):

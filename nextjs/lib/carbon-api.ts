@@ -84,12 +84,14 @@ export async function estimateCarbon(
 }
 
 /**
- * Get land use classification and province for a drawn polygon
+ * Get land use classification and province for a drawn polygon.
+ * @param output_crs CRS for returned geometry: "EPSG:4326" (WGS84 lon/lat, default) or "EPSG:32647" (UTM)
  */
 export async function getPlantationInfo(polygon: {
     id: string;
     geometry: GeoJSON.Geometry;
     project_type?: string | null;
+    output_crs?: string | null;
 }): Promise<PlantationInfoResponse> {
     const response = await fetch(`${API_BASE_URL}/api/v1/plantation-info`, {
         method: "POST",

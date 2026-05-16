@@ -119,9 +119,14 @@ class LanduseService:
             lu_candidates["group_key"] = lu_candidates.apply(determine_group, axis=1)
             merged_gdf = lu_candidates.dissolve(by="group_key")
 
+            # Calculate areas while still in UTM (metres), then convert to requested output CRS
+            merged_gdf["_area_m2"] = merged_gdf.geometry.area
+            output_crs = poly_data.get("output_crs", "EPSG:4326") or "EPSG:4326"
+            merged_gdf_out = merged_gdf.to_crs(output_crs)
+
             lu_classes_result = []
             for group_key, row in merged_gdf.iterrows():
-                geom = row.geometry
+                geom_wgs84 = merged_gdf_out.loc[group_key].geometry
                 if group_key == "U":
                     desc_th, desc_en = "สิ่งปลูกสร้าง", "Urban/Built-up Area"
                 elif group_key == "F":
@@ -134,13 +139,13 @@ class LanduseService:
                     desc_th = row.get("LU_DES_TH", "N/A")
                     desc_en = row.get("LU_DES_EN", "N/A")
 
-                area_m2 = geom.area
+                area_m2 = row["_area_m2"]
                 percent = (area_m2 / total_area_m2 * 100) if total_area_m2 > 0 else 0
                 lu_classes_result.append({
                     "lu_class": group_key,
                     "lu_class_desc_th": desc_th,
                     "lu_class_desc_en": desc_en,
-                    "geometry": mapping(geom),
+                    "geometry": mapping(geom_wgs84),   # coordinates in output_crs
                     "area_m2": round(area_m2, 4),
                     "area_percent": round(percent, 2),
                 })

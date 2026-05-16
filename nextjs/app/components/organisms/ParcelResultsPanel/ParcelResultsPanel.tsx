@@ -154,7 +154,7 @@ function profileToBarPoints(profile: YearlyEstimate[], startAge: number): BarPoi
             age,
             yearBE: item.year + 543,
             co2: item.total_carbon_tCO2e,
-            cycle: Math.floor(age / CUT_AGE),
+            cycle: Math.floor(i / 7),
             cycleAge: age,
             errorMargin: (item.ci_upper_tCO2e - item.ci_lower_tCO2e) / 2,
         };
@@ -183,7 +183,7 @@ function aggregateProfiles(responses: EstimationResponse[], startAges: number[])
             age: avgAge,
             yearBE,
             co2: totalCo2,
-            cycle: Math.floor(avgAge / CUT_AGE),
+            cycle: Math.floor(j / 7),
             cycleAge: avgAge,
             errorMargin: Math.sqrt(sumSqErr),
         });
@@ -1046,7 +1046,7 @@ export function ParcelResultsPanel({
                         });
                         const avgAge = Math.round(totalContinuousAge / N);
                         if (avgAge > 35) break;
-                        pts.push({ age: avgAge, yearBE, co2: totalCo2, cycle: Math.floor(avgAge / CUT_AGE), cycleAge: avgAge, errorMargin: Math.sqrt(sumSqMargin) });
+                        pts.push({ age: avgAge, yearBE, co2: totalCo2, cycle: Math.floor(i / 7), cycleAge: avgAge, errorMargin: Math.sqrt(sumSqMargin) });
                     }
                 }
             } else if (cr) {

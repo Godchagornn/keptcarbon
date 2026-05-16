@@ -17,7 +17,8 @@ from app.core.constants import (
     CARBON_EQUIVALENT_FACTOR,
     REGION_CONFIG,
     GROWTH_MODEL_YEAR,
-    MAX_TREE_AGE
+    MAX_TREE_AGE,
+    CUT_AGE,
 )
 
 class CarbonService:
@@ -90,38 +91,30 @@ class CarbonService:
             return []
 
         current_year = datetime.now().year
-        max_age_profile = GROWTH_MODEL_YEAR
         projections = []
 
-        max_age = max(cohort['age'] for cohort in cohorts)
-        limit_year = current_year + (max_age_profile - max_age)
-        print(f"Max cohort age: {max_age}, Profile limit year: {limit_year}")
-
-        for year_offset in range(0, max_age_profile + 1):
+        for year_offset in range(0, GROWTH_MODEL_YEAR):
             target_year = current_year + year_offset
-
-            if target_year > limit_year:
-                break
 
             sum_biomass_est = 0.0
             sum_biomass_lower = 0.0
             sum_biomass_upper = 0.0
-            min_age = float('inf')
 
             for cohort in cohorts:
-                future_age = cohort['age'] + year_offset
+                raw_age = cohort['age'] + year_offset
+                # Apply replanting cycle: trees cut and replanted at CUT_AGE
+                if raw_age > CUT_AGE:
+                    future_age = ((raw_age - 1) % CUT_AGE) + 1
+                else:
+                    future_age = raw_age
 
-                if cohort['age'] < min_age:
-                    min_age = cohort['age']
-
-                if future_age <= max_age_profile:
-                    row = lookup_df[lookup_df['Age'] == future_age]
-                    if not row.empty:
-                        data = row.iloc[0]
-                        count = cohort['tree_count']
-                        sum_biomass_est += data['Biomass_Est'] * count
-                        sum_biomass_lower += data['Biomass_CI_Lower'] * count
-                        sum_biomass_upper += data['Biomass_CI_Upper'] * count
+                row = lookup_df[lookup_df['Age'] == future_age]
+                if not row.empty:
+                    data = row.iloc[0]
+                    count = cohort['tree_count']
+                    sum_biomass_est += data['Biomass_Est'] * count
+                    sum_biomass_lower += data['Biomass_CI_Lower'] * count
+                    sum_biomass_upper += data['Biomass_CI_Upper'] * count
 
             if sum_biomass_est > 0:
                 projections.append({

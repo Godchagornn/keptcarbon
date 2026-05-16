@@ -248,31 +248,50 @@ export default function MapDrawPage() {
       });
 
       map.addSource("matched-parcels", { type: "geojson", data: emptyFC() });
+      // Land-use colour palette: A302 rubber=orange, F forest=green, W water=blue, U urban=slate, M misc=purple, fallback=indigo
+      const LU_FILL_COLOR: maplibregl.ExpressionSpecification = [
+        "match", ["get", "lu_class"],
+        "A302", "#ff9100",
+        "F",    "#22c55e",
+        "W",    "#3b82f6",
+        "U",    "#94a3b8",
+        "M",    "#c084fc",
+        "#6366f1",
+      ];
+      const LU_LINE_COLOR: maplibregl.ExpressionSpecification = [
+        "match", ["get", "lu_class"],
+        "A302", "#ff6a00",
+        "F",    "#16a34a",
+        "W",    "#2563eb",
+        "U",    "#64748b",
+        "M",    "#9333ea",
+        "#4f46e5",
+      ];
       map.addLayer({
         id: "matched-parcels-fill",
         type: "fill",
         source: "matched-parcels",
-        paint: { "fill-color": "#ff9100", "fill-opacity": 0.5 },
+        paint: { "fill-color": LU_FILL_COLOR, "fill-opacity": 0.45 },
       });
       map.addLayer({
         id: "matched-parcels-line",
         type: "line",
         source: "matched-parcels",
-        paint: { "line-color": "#ff6a00", "line-width": 2.4 },
+        paint: { "line-color": LU_LINE_COLOR, "line-width": 2.2 },
       });
       map.addLayer({
         id: "matched-parcels-label",
         type: "symbol",
         source: "matched-parcels",
         layout: {
-          "text-field": "{plot_index}",
-          "text-size": 16,
+          "text-field": ["coalesce", ["get", "lu_class"], ["get", "plot_index"]],
+          "text-size": 13,
           "text-allow-overlap": false,
         },
         paint: {
           "text-color": "#ffffff",
-          "text-halo-color": "#fa0303ff",
-          "text-halo-width": 3,
+          "text-halo-color": "#0f172a",
+          "text-halo-width": 2,
         },
       });
 
@@ -730,11 +749,12 @@ export default function MapDrawPage() {
       const result = await getPlantationInfo({
         id: `search-${Date.now()}`,
         geometry: truncateCoords(combinedGeom),
+        output_crs: "EPSG:4326",
       });
 
-      // Extract A302 rubber features for map display
-      const rubberLU = (result.lu_polygon ?? []).filter(lu => lu.lu_class === "A302");
-      const features: GeoJSON.Feature[] = rubberLU.map((lu, i) => ({
+      // Show ALL lu_polygon features on map with lu_class for colour coding
+      const allLU = result.lu_polygon ?? [];
+      const features: GeoJSON.Feature[] = allLU.map((lu, i) => ({
         type: "Feature",
         geometry: lu.geometry,
         properties: {
@@ -750,21 +770,41 @@ export default function MapDrawPage() {
       if (map && mapLoadedRef.current) {
         (map.getSource("matched-parcels") as maplibregl.GeoJSONSource | undefined)
           ?.setData({ type: "FeatureCollection", features });
+
+        // Fit map to show all returned land-use polygons
+        if (features.length > 0) {
+          const bounds = new maplibregl.LngLatBounds();
+          features.forEach(f => {
+            const walk = (coords: unknown): void => {
+              if (!Array.isArray(coords)) return;
+              if (typeof coords[0] === "number") { bounds.extend(coords as [number, number]); return; }
+              coords.forEach(walk);
+            };
+            walk((f.geometry as GeoJSON.Polygon | GeoJSON.MultiPolygon).coordinates);
+          });
+          if (!bounds.isEmpty()) {
+            map.fitBounds(bounds, { padding: 60, duration: 700, maxZoom: 17 });
+          }
+        }
       }
 
       setParcelFeatures(features);
 
-      if (result.status.status === "error" || rubberLU.length === 0) {
+      // Count rubber (A302) specifically for status / error messages
+      const rubberLU = allLU.filter(lu => lu.lu_class === "A302");
+
+      if (result.status.status === "error" || allLU.length === 0) {
         const msg = result.status.status_code === "E01"
           ? "พื้นที่วาดอยู่นอกจังหวัดที่รองรับ กรุณาวาดในพื้นที่จังหวัดระยอง"
-          : "ไม่พบพื้นที่ยางพาราในขอบเขตที่วาด กรุณาวาดใหม่ให้ครอบคลุมสวนยาง";
+          : "ไม่พบข้อมูลการใช้ที่ดินในขอบเขตที่วาด กรุณาวาดใหม่";
         setSearchErr(msg);
         setSearchCount(0);
-        setStatus("ไม่พบพื้นที่ยางพารา");
+        setStatus("ไม่พบข้อมูล");
       } else {
         const rubberPct = rubberLU.reduce((s, lu) => s + lu.area_percent, 0);
-        setSearchCount(rubberLU.length);
-        setStatus(`พบพื้นที่ยางพารา A302 (${rubberPct.toFixed(1)}% ของพื้นที่วาด)`);
+        setSearchCount(allLU.length);
+        const rubberNote = rubberLU.length > 0 ? ` · ยางพารา A302 ${rubberPct.toFixed(1)}%` : " · ไม่พบยางพารา";
+        setStatus(`พบ ${allLU.length} พื้นที่ใช้ที่ดิน${rubberNote}`);
       }
     } catch (err) {
       setSearchErr(err instanceof Error ? err.message : String(err));
