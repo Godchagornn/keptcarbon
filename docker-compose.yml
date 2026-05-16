@@ -48,7 +48,6 @@ services:
 
   backend:
     build: ./backend
-    platform: linux/arm64
     networks:
       - keptcarbon
     depends_on:
