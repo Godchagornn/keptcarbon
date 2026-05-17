@@ -471,39 +471,129 @@ export function ParcelResultsPanel({
     const luRealData = useMemo(() => {
         const data: Record<string, { rai: number; pct: number; desc?: string }> = {};
         const featuresToUse = luFeatures.length > 0 ? luFeatures : parcelFeatures;
-        let totalM2 = 0;
+
+        // 1. Calculate the total raw area of the intersected land use features
+        let totalIntersectedM2 = 0;
         for (const feat of featuresToUse) {
             const p = (feat.properties ?? {}) as Record<string, unknown>;
             const m2 = (p.area_m2 as number) || 0;
-            if (p.lu_class) totalM2 += m2;
+            if (p.lu_class) {
+                totalIntersectedM2 += m2;
+            }
         }
+
+        // 2. We want the sum of land use areas to match totalArea (which is totalDrawnRai)
+        const scaleFactor = (totalIntersectedM2 > 0 && totalArea > 0) 
+            ? (totalArea * 1600) / totalIntersectedM2 
+            : 1.0;
+
+        // 3. Process each feature and apply scaling
         for (const feat of featuresToUse) {
             const p = (feat.properties ?? {}) as Record<string, unknown>;
             const cls = p.lu_class as string | undefined;
             const desc = p.lu_class_desc_th as string | undefined;
-            const m2 = (p.area_m2 as number) || 0;
-            const pct = (p.area_percent as number) || (totalM2 > 0 ? (m2 / totalM2) * 100 : 0);
+            const rawM2 = (p.area_m2 as number) || 0;
+            
             if (cls) {
+                const scaledM2 = rawM2 * scaleFactor;
+                const scaledRai = scaledM2 / 1600;
+                const scaledPct = totalIntersectedM2 > 0 ? (rawM2 / totalIntersectedM2) * 100 : 0;
+
                 if (!data[cls]) {
                     data[cls] = { rai: 0, pct: 0, desc: desc || "" };
                 }
-                data[cls].rai += m2 / 1600;
-                data[cls].pct += pct;
+                data[cls].rai += scaledRai;
+                data[cls].pct += scaledPct;
                 if (desc) data[cls].desc = desc;
             }
         }
-        // "A" parent = sum of all A-type lu classes
-        const aM2 = featuresToUse.reduce((s, f) => {
-            const p = (f.properties ?? {}) as Record<string, unknown>;
-            return (p.lu_class as string)?.startsWith("A") ? s + ((p.area_m2 as number) || 0) : s;
-        }, 0);
-        if (aM2 > 0) data["A"] = { rai: aM2 / 1600, pct: Math.round(totalM2 > 0 ? (aM2 / totalM2) * 1000 : 0) / 10, desc: "พื้นที่เกษตรกรรม" };
+
+        // 4. Calculate parent "A" area as the sum of all A subcategories
+        let aRai = 0;
+        let aPct = 0;
+        for (const key in data) {
+            if (key.startsWith("A") && key !== "A") {
+                aRai += data[key].rai;
+                aPct += data[key].pct;
+            }
+        }
+        if (aRai > 0) {
+            data["A"] = { 
+                rai: aRai, 
+                pct: aPct, 
+                desc: "พื้นที่เกษตรกรรม" 
+            };
+        }
+
+        // 5. Round the results nicely for display
+        const parentKeys = ["A", "U", "F", "W", "M"];
+        
+        let roundedParentRaiSum = 0;
+        let roundedParentPctSum = 0;
+        let largestParentKey = "";
+        let maxRai = -1;
 
         for (const key in data) {
+            data[key].rai = Math.round(data[key].rai * 100) / 100;
             data[key].pct = Math.round(data[key].pct * 10) / 10;
+            
+            if (parentKeys.includes(key)) {
+                roundedParentRaiSum += data[key].rai;
+                roundedParentPctSum += data[key].pct;
+                if (data[key].rai > maxRai) {
+                    maxRai = data[key].rai;
+                    largestParentKey = key;
+                }
+            }
         }
+
+        // Adjust parent categories to sum up to totalArea and 100.0% exactly
+        if (totalArea > 0 && largestParentKey) {
+            const raiDiff = totalArea - roundedParentRaiSum;
+            const pctDiff = 100.0 - roundedParentPctSum;
+
+            if (Math.abs(raiDiff) < 0.2) {
+                data[largestParentKey].rai = Math.round((data[largestParentKey].rai + raiDiff) * 100) / 100;
+            }
+            if (Math.abs(pctDiff) < 2.0) {
+                data[largestParentKey].pct = Math.round((data[largestParentKey].pct + pctDiff) * 10) / 10;
+            }
+        }
+
+        // Adjust subcategories of "A" so they sum up to data["A"].rai and data["A"].pct exactly
+        if (data["A"]) {
+            const subKeys = Object.keys(data).filter(k => k.startsWith("A") && k !== "A");
+            if (subKeys.length > 0) {
+                let roundedSubRaiSum = 0;
+                let roundedSubPctSum = 0;
+                let largestSubKey = "";
+                let maxSubRai = -1;
+
+                subKeys.forEach(k => {
+                    roundedSubRaiSum += data[k].rai;
+                    roundedSubPctSum += data[k].pct;
+                    if (data[k].rai > maxSubRai) {
+                        maxSubRai = data[k].rai;
+                        largestSubKey = k;
+                    }
+                });
+
+                if (largestSubKey) {
+                    const subRaiDiff = data["A"].rai - roundedSubRaiSum;
+                    const subPctDiff = data["A"].pct - roundedSubPctSum;
+                    
+                    if (Math.abs(subRaiDiff) < 0.2) {
+                        data[largestSubKey].rai = Math.round((data[largestSubKey].rai + subRaiDiff) * 100) / 100;
+                    }
+                    if (Math.abs(subPctDiff) < 2.0) {
+                        data[largestSubKey].pct = Math.round((data[largestSubKey].pct + subPctDiff) * 10) / 10;
+                    }
+                }
+            }
+        }
+
         return data;
-    }, [parcelFeatures, luFeatures]);
+    }, [parcelFeatures, luFeatures, totalArea]);
     const totalCO2 = useMemo(() => plots.reduce((s, p) => s + p.co2, 0), [plots]);
     const summaryPts = useMemo(() => summaryForecast(plots, summaryFcYrs), [plots, summaryFcYrs]);
     const dominantProvince = useMemo(() => {
@@ -769,24 +859,35 @@ export function ParcelResultsPanel({
                         <div className="prp-subtitle">กรอกหรือข้ามได้ — ข้อมูลจะนำไปประมวลผลคาร์บอน</div>
                     </div>
                     {onBack && (
-                        <div
+                        <button
                             onClick={onBack}
                             style={{
                                 fontSize: 11,
                                 fontWeight: 700,
-                                color: "#64748b",
+                                color: "#0f766e",
                                 cursor: "pointer",
-                                background: "rgba(100,116,139,0.08)",
-                                padding: "6px 10px",
+                                background: "#f0fdfa",
+                                border: "1px solid rgba(13,148,136,0.3)",
+                                padding: "6px 12px",
                                 borderRadius: 8,
                                 display: "flex",
                                 alignItems: "center",
-                                gap: 4,
-                                transition: "all 0.2s"
+                                gap: 6,
+                                transition: "all 0.2s",
+                                outline: "none",
+                                boxShadow: "0 2px 5px rgba(13,148,136,0.05)"
+                            }}
+                            onMouseOver={(e) => {
+                                e.currentTarget.style.background = "#ccfbf1";
+                                e.currentTarget.style.borderColor = "rgba(13,148,136,0.5)";
+                            }}
+                            onMouseOut={(e) => {
+                                e.currentTarget.style.background = "#f0fdfa";
+                                e.currentTarget.style.borderColor = "rgba(13,148,136,0.3)";
                             }}
                         >
                             <i className="bi bi-arrow-left-circle" /> ย้อนกลับ
-                        </div>
+                        </button>
                     )}
                 </div>
 

@@ -1577,6 +1577,20 @@ export default function MapDrawPage() {
                           <button className="mds-btn mds-btn-solid" onClick={startDrawFlow}>
                             <i className="bi bi-pencil" /> {drawnParcels.length > 0 ? "วาดแปลงเพิ่ม" : "เริ่มวาดแปลง"}
                           </button>
+                          {drawnParcels.length > 0 && (
+                            <button
+                              className="mds-btn"
+                              style={{
+                                background: "linear-gradient(135deg, #0d9488, #0f766e)",
+                                color: "#fff",
+                                border: "none",
+                                boxShadow: "0 4px 10px rgba(13,148,136,0.25)"
+                              }}
+                              onClick={() => setCurrentStep(2)}
+                            >
+                              <i className="bi bi-arrow-right-circle" /> กรอกข้อมูลแปลง (ขั้นตอนถัดไป)
+                            </button>
+                          )}
                         </div>
                       </>
                     )}
@@ -1622,9 +1636,24 @@ export default function MapDrawPage() {
                       <i className="bi bi-upload" /> โหลดและแสดงบนแผนที่
                     </button>
                     {hasGeom && !drawing && (
-                      <button className="mds-btn mds-btn-soft" onClick={clearDraw}>
-                        <i className="bi bi-trash" /> ล้างแปลง
-                      </button>
+                      <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+                        <button className="mds-btn mds-btn-soft" style={{ flex: 1 }} onClick={clearDraw}>
+                          <i className="bi bi-trash" /> ล้างแปลง
+                        </button>
+                        <button
+                          className="mds-btn"
+                          style={{
+                            flex: 1.5,
+                            background: "linear-gradient(135deg, #0d9488, #0f766e)",
+                            color: "#fff",
+                            border: "none",
+                            boxShadow: "0 4px 10px rgba(13,148,136,0.25)"
+                          }}
+                          onClick={() => setCurrentStep(2)}
+                        >
+                          <i className="bi bi-arrow-right-circle" /> กรอกข้อมูลแปลง
+                        </button>
+                      </div>
                     )}
                   </div>
                 )}
