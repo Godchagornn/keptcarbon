@@ -580,12 +580,11 @@ export function ParcelResultsPanel({
             Object.entries(f.luChecked || {}).forEach(([cls, on]) => { if (on) checkedClasses.add(cls); });
         });
 
-        // Filter to only checked lu_class features
         const featuresToUse = luFeatures.length > 0 ? luFeatures : parcelFeatures;
         const selectedFeats = featuresToUse.filter(feat => {
             const luClass = ((feat.properties ?? {}) as Record<string, unknown>).lu_class as string | undefined;
             if (!luClass) return true; // include non-lu features as-is
-            return Array.from(checkedClasses).some(c => luClass === c || luClass.startsWith(c));
+            return checkedClasses.has(luClass);
         });
 
         if (selectedFeats.length === 0) {
@@ -1028,7 +1027,7 @@ export function ParcelResultsPanel({
                                                     const m2 = (p.area_m2 as number) || 0;
                                                     if (!cls) return sum; // don't count features without lu_class in this summary
                                                     
-                                                    const isSelected = checkedArray.some(c => cls === c || cls.startsWith(c));
+                                                    const isSelected = checkedArray.includes(cls);
                                                     return isSelected ? sum + m2 : sum;
                                                 }, 0) / 1600;
 

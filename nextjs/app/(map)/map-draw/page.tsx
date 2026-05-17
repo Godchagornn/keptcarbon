@@ -115,6 +115,41 @@ export default function MapDrawPage() {
     // Colors are now statically applied in addLayer, so no style updates needed here.
   }, []);
 
+  // Map Effect: Grey out unticked Land Use features instead of hiding them
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !mapLoadedRef.current) return;
+    
+    const checkedClasses = Object.entries(visibleLuClasses)
+      .filter(([, on]) => on)
+      .map(([cls]) => cls);
+
+    // Remove any previous filter so all polygons render
+    map.setFilter("matched-parcels-fill", null);
+    map.setFilter("matched-parcels-line", null);
+
+    if (checkedClasses.length === 0) {
+      map.setPaintProperty("matched-parcels-fill", "fill-color", "#94a3b8");
+      map.setPaintProperty("matched-parcels-fill", "fill-opacity", 0.2);
+      map.setPaintProperty("matched-parcels-line", "line-color", "#94a3b8");
+    } else {
+      const colorMap = [
+        "case",
+        ["==", ["slice", ["to-string", ["coalesce", ["get", "lu_class"], ""]], 0, 1], "U"], "#ef4444",
+        ["==", ["slice", ["to-string", ["coalesce", ["get", "lu_class"], ""]], 0, 1], "A"], "#84cc16",
+        ["==", ["slice", ["to-string", ["coalesce", ["get", "lu_class"], ""]], 0, 1], "F"], "#166534",
+        ["==", ["slice", ["to-string", ["coalesce", ["get", "lu_class"], ""]], 0, 1], "W"], "#3b82f6",
+        ["==", ["slice", ["to-string", ["coalesce", ["get", "lu_class"], ""]], 0, 1], "M"], "#9ca3af",
+        "#ff9100"
+      ];
+      
+      const isCheckedExpr = ["match", ["coalesce", ["get", "lu_class"], ""], checkedClasses, true, false];
+      
+      map.setPaintProperty("matched-parcels-fill", "fill-color", ["case", isCheckedExpr, colorMap, "#94a3b8"] as unknown as maplibregl.ExpressionSpecification);
+      map.setPaintProperty("matched-parcels-fill", "fill-opacity", ["case", isCheckedExpr, 0.65, 0.35] as unknown as maplibregl.ExpressionSpecification);
+      map.setPaintProperty("matched-parcels-line", "line-color", ["case", isCheckedExpr, "#64748b", "#94a3b8"] as unknown as maplibregl.ExpressionSpecification);
+    }
+  }, [visibleLuClasses, parcelFeatures]);
 
   // ===== MAP INIT =====
   useEffect(() => {
