@@ -1537,6 +1537,113 @@ export function ParcelResultsPanel({
 
 
 
+                    <div style={{ display: "flex", gap: 8, width: "100%", marginBottom: 16, alignItems: "center" }}>
+                        <button
+                            className="prp-btn-primary"
+                            onClick={() => handleSave()}
+                            disabled={!projectName.trim() || saveState === "saving"}
+                            style={{
+                                flex: 1.2,
+                                height: "42px",
+                                padding: 0,
+                                margin: 0,
+                                boxSizing: "border-box",
+                                fontSize: "12.5px",
+                                fontWeight: 700,
+                                background: "linear-gradient(135deg,#0369a1,#0284c7)",
+                                border: "1.5px solid transparent",
+                                borderRadius: "14px",
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "center",
+                                gap: "4px",
+                                cursor: !projectName.trim() || saveState === "saving" ? "not-allowed" : "pointer",
+                                opacity: !projectName.trim() || saveState === "saving" ? 0.6 : 1,
+                                color: "#fff",
+                                transition: "all 0.2s",
+                                boxShadow: "0 4px 10px rgba(2,132,199,0.2)"
+                            }}
+                        >
+                            {saveState === "saving" ? (
+                                <><span className="s1-spin" style={{ width: 14, height: 14, border: "2px solid rgba(255,255,255,0.3)", borderTopColor: "#fff" }} /> บันทึก...</>
+                            ) : saveState === "done" ? (
+                                <><i className="bi bi-check-circle-fill" /> บันทึกแล้ว</>
+                            ) : (
+                                <><i className="bi bi-save" /> บันทึกข้อมูล</>
+                            )}
+                        </button>
+                        <button
+                            className="prp-btn-ghost"
+                            onClick={() => onStepChange(2)}
+                            style={{
+                                flex: 1,
+                                height: "42px",
+                                padding: 0,
+                                margin: 0,
+                                boxSizing: "border-box",
+                                fontSize: "12.5px",
+                                fontWeight: 700,
+                                color: "#047857",
+                                cursor: "pointer",
+                                background: "rgba(16, 185, 129, 0.08)",
+                                border: "1.5px solid rgba(16, 185, 129, 0.25)",
+                                borderRadius: "14px",
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "center",
+                                gap: "4px",
+                                transition: "all 0.2s",
+                                outline: "none",
+                                boxShadow: "0 2px 5px rgba(16, 185, 129, 0.05)"
+                            }}
+                            onMouseOver={(e) => {
+                                e.currentTarget.style.background = "rgba(16, 185, 129, 0.16)";
+                                e.currentTarget.style.borderColor = "rgba(16, 185, 129, 0.45)";
+                            }}
+                            onMouseOut={(e) => {
+                                e.currentTarget.style.background = "rgba(16, 185, 129, 0.08)";
+                                e.currentTarget.style.borderColor = "rgba(16, 185, 129, 0.25)";
+                            }}
+                        >
+                            <i className="bi bi-arrow-left-short" style={{ fontSize: "16px", fontWeight: "bold" }} /> แก้ไขข้อมูล
+                        </button>
+                        <button
+                            className="prp-btn-text"
+                            onClick={onReset}
+                            style={{
+                                flex: 1,
+                                height: "42px",
+                                padding: 0,
+                                margin: 0,
+                                boxSizing: "border-box",
+                                fontSize: "12.5px",
+                                fontWeight: 700,
+                                color: "#dc3545",
+                                cursor: "pointer",
+                                background: "rgba(220, 53, 69, 0.08)",
+                                border: "1.5px solid rgba(220, 53, 69, 0.25)",
+                                borderRadius: "14px",
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "center",
+                                gap: "4px",
+                                transition: "all 0.2s",
+                                outline: "none",
+                                textDecoration: "none",
+                                boxShadow: "0 2px 5px rgba(220, 53, 69, 0.05)"
+                            }}
+                            onMouseOver={(e) => {
+                                e.currentTarget.style.background = "rgba(220, 53, 69, 0.16)";
+                                e.currentTarget.style.borderColor = "rgba(220, 53, 69, 0.45)";
+                            }}
+                            onMouseOut={(e) => {
+                                e.currentTarget.style.background = "rgba(220, 53, 69, 0.08)";
+                                e.currentTarget.style.borderColor = "rgba(220, 53, 69, 0.25)";
+                            }}
+                        >
+                            <i className="bi bi-x-circle" style={{ fontSize: "12px" }} /> ไม่บันทึก
+                        </button>
+                    </div>
                     {isTotal ? (
                         <>
                             {/* Total summary */}
@@ -1702,38 +1809,6 @@ export function ParcelResultsPanel({
                         )}
                     </div>
 
-                    <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 12 }}>
-                        <button
-                            className="prp-btn-primary"
-                            onClick={() => handleSave()}
-                            disabled={!projectName.trim() || saveState === "saving"}
-                            style={{ background: "linear-gradient(135deg,#0369a1,#0284c7)" }}
-                        >
-                            {saveState === "saving" ? (
-                                <><span className="s1-spin" style={{ width: 14, height: 14, border: "2px solid rgba(255,255,255,0.3)", borderTopColor: "#fff", marginRight: 8 }} /> กำลังบันทึก...</>
-                            ) : saveState === "done" ? (
-                                <><i className="bi bi-check-circle-fill me-2" />บันทึกสำเร็จ!</>
-                            ) : (
-                                <><i className="bi bi-save me-2" />บันทึกผลลงฐานข้อมูล</>
-                            )}
-                        </button>
-                        <button
-                            className="prp-btn-ghost"
-                            onClick={() => onStepChange(2)}
-                            style={isMobile ? {
-                                padding: "6px 12px",
-                                fontSize: 11,
-                                borderRadius: 10,
-                                width: "auto",
-                                alignSelf: "center",
-                                minWidth: 140,
-                                background: "rgba(45, 158, 95, 0.05)"
-                            } : undefined}
-                        >
-                            ← กลับแก้ไขข้อมูล
-                        </button>
-                        <button className="prp-btn-text" onClick={onReset}><i className="bi bi-x-circle me-1" />ไม่บันทึก</button>
-                    </div>
                 </div>
             );
         }
