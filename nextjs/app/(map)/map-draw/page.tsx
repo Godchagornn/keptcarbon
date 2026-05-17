@@ -1039,10 +1039,6 @@ export default function MapDrawPage() {
     }
   }, []);
 
-  const backToStep1 = useCallback(() => {
-    setCurrentStep(1);
-    setStatus("กลับไปหน้าวาดแปลง — สามารถวาดแปลงเพิ่มได้");
-  }, []);
 
   // ===== PLANTATION INFO (rubber area search via backend) =====
   const runPlantationInfo = useCallback(async () => {
@@ -1676,7 +1672,7 @@ export default function MapDrawPage() {
                 drawnGeometry={drawnGeometry}
                 onFlyTo={flyToFeature}
                 onReset={clearDraw}
-                onBack={backToStep1}
+                onBack={clearDraw}
                 onCancel={cancelSearch}
                 currentStep={currentStep}
                 onStepChange={setCurrentStep}
