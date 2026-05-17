@@ -1168,20 +1168,43 @@ export function ParcelResultsPanel({
                                             </div>
                                             {/* Selected area summary */}
                                             {(() => {
-                                                const checkedArray = Object.entries(form.luChecked || {})
-                                                    .filter(([cls, on]) => on && !['W', 'M'].includes(cls)) // Exclude W and M manually just in case
-                                                    .map(([cls]) => cls);
+                                                // 1. Gather all checked leaf categories. 
+                                                // We skip "A" because it is a parent category and summing it would double-count its subcategories.
+                                                const baseLU = [
+                                                    { id: "U", disabled: false, fixed: false },
+                                                    { id: "A", disabled: false, fixed: true },
+                                                    { id: "F", disabled: false, fixed: false },
+                                                    { id: "W", disabled: true, fixed: false },
+                                                    { id: "M", disabled: true, fixed: false },
+                                                ];
 
-                                                const featuresToUse = luFeatures.length > 0 ? luFeatures : parcelFeatures;
-                                                const selectedRai = featuresToUse.reduce((sum, feat) => {
-                                                    const p = (feat.properties ?? {}) as Record<string, unknown>;
-                                                    const cls = p.lu_class as string | undefined;
-                                                    const m2 = (p.area_m2 as number) || 0;
-                                                    if (!cls) return sum; // don't count features without lu_class in this summary
+                                                const activeLeafIds: string[] = [];
+                                                baseLU.forEach(base => {
+                                                    if (base.id === "A") {
+                                                        const aSubtypes = Object.keys(luRealData).filter(k => k.startsWith("A") && k !== "A").sort();
+                                                        if (!aSubtypes.includes("A302")) aSubtypes.push("A302");
+                                                        if (!aSubtypes.includes("A303")) aSubtypes.push("A303");
+                                                        if (!aSubtypes.includes("A304")) aSubtypes.push("A304");
 
-                                                    const isSelected = checkedArray.includes(cls);
-                                                    return isSelected ? sum + m2 : sum;
-                                                }, 0) / 1600;
+                                                        aSubtypes.forEach(sub => {
+                                                            const isChecked = sub === "A302" || !!form.luChecked?.[sub];
+                                                            if (isChecked) {
+                                                                activeLeafIds.push(sub);
+                                                            }
+                                                        });
+                                                    } else {
+                                                        const isChecked = !base.disabled && (base.fixed || !!form.luChecked?.[base.id]);
+                                                        if (isChecked) {
+                                                            activeLeafIds.push(base.id);
+                                                        }
+                                                    }
+                                                });
+
+                                                // 2. Sum the normalized areas from luRealData for each active leaf category
+                                                const selectedRai = activeLeafIds.reduce((sum, cls) => {
+                                                    const realRai = luRealData[cls]?.rai || 0;
+                                                    return sum + realRai;
+                                                }, 0);
 
                                                 return selectedRai > 0 ? (
                                                     <div style={{ marginTop: 12, padding: "8px 12px", background: "rgba(249,115,22,0.08)", borderRadius: 8, border: "1px solid rgba(249,115,22,0.2)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
