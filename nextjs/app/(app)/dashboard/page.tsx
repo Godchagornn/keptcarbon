@@ -108,7 +108,7 @@ export default function DashboardPage() {
   );
 
   return (
-    <div style={{ minHeight: "100vh", background: "linear-gradient(160deg,#ecfdf5 0%,#f0f9ff 50%,#f8fafc 100%)", paddingTop: 88, paddingBottom: 60, fontFamily: "'Noto Sans Thai','Inter',sans-serif" }}>
+    <div style={{ minHeight: "100vh", background: "linear-gradient(160deg,#ecfdf5 0%,#f0f9ff 50%,#f8fafc 100%)", paddingTop: isMobile ? 104 : 124, paddingBottom: 60, fontFamily: "'Noto Sans Thai','Inter',sans-serif" }}>
       <div style={{ maxWidth: 1320, margin: "0 auto", padding: "0 20px" }}>
 
         {/* ── HERO ───────────────────────────── */}
