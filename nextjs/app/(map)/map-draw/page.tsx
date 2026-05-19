@@ -549,6 +549,7 @@ function MapDrawContent() {
       center: [101.258, 13.5],
       zoom: 2,
       minZoom: 1,
+      maxZoom: 19,
       pitch: 0,
       bearing: 0,
       maxPitch: 0,
