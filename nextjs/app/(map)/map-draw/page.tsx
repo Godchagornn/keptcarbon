@@ -519,7 +519,7 @@ function MapDrawContent() {
             tiles: ["https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"],
             tileSize: 256,
             minzoom: 1,
-            maxzoom: 20,
+            maxzoom: 18,
             attribution: "",
           },
           street: {
@@ -535,7 +535,7 @@ function MapDrawContent() {
             tiles: ["https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}"],
             tileSize: 256,
             minzoom: 1,
-            maxzoom: 20,
+            maxzoom: 19,
             attribution: "",
           },
         },
