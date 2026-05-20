@@ -14,6 +14,7 @@ type Props = {
     searchCount: number | null;
     searchTruncated: boolean;
     parcelFeatures: GeoJSON.Feature[];
+    luFeatures?: GeoJSON.Feature[];
     userDisplayName?: string;
     drawnGeometry?: GeoJSON.Geometry | null;
     onFlyTo: (feature: GeoJSON.Feature) => void;
@@ -30,6 +31,7 @@ type Props = {
     onFinishDraw?: () => void;
     onCancelDraw?: () => void;
     onLandUseChange?: (checked: Record<string, boolean>) => void;
+    onProjectTypeChange?: (type: "replanting" | "existing") => void;
 };
 
 type PlotTab = "analyze" | "forecast";
@@ -51,12 +53,24 @@ const VARIETY_OPTIONS = [
     "RRIT 408", "RRIT 251", "สงขลา 36", "RRIM 712", "อื่นๆ",
 ];
 const SPACING_OPTIONS = ["2.5x8", "3x7", "2.5x7", "2x6", "3x8"];
+const SUPPORTED_CLONES = ["RRIM 600", "RRIT 251"];
 
 const CURRENT_CE = new Date().getFullYear();
 const CURRENT_BE = CURRENT_CE + 543;
 
 const NEW_YEAR_OPTIONS = Array.from({ length: 11 }, (_, i) => String(CURRENT_BE + i));
 const OLD_YEAR_OPTIONS = Array.from({ length: 2572 - 2534 + 1 }, (_, i) => String(2572 - i));
+
+const LU_DESC_MAP: Record<string, string> = {
+    "A": "พื้นที่เกษตรกรรม",
+    "A302": "ยางพารา",
+    "A303": "ปาล์มน้ำมัน",
+    "A304": "พืชสวนอื่นๆ",
+    "U": "พื้นที่ชุมชนและสิ่งปลูกสร้าง",
+    "F": "พื้นที่ป่าไม้",
+    "W": "พื้นที่แหล่งน้ำ",
+    "M": "พื้นที่อื่นๆ"
+};
 
 interface CarbonResult {
     plotIdx: number;
@@ -67,6 +81,9 @@ interface CarbonResult {
     variety: string;
     co2Now: number;
     source: "user" | "backend";
+    yearUsedDetails?: string;
+    selectedAreaRai?: number;
+    luBreakdown?: Record<string, { rai: number; pct: number; desc: string }>;
 }
 
 interface PlotInfo {
@@ -96,6 +113,50 @@ const THAI_PROVINCES = [
 ];
 
 // ── Helpers ───────────────────────────────────────────────────────────────
+function getCentroid(coords: [number, number][]): [number, number] {
+    let sumX = 0, sumY = 0;
+    coords.forEach(([x, y]) => {
+        sumX += x;
+        sumY += y;
+    });
+    return [sumX / coords.length, sumY / coords.length];
+}
+
+function getSamplePoint(geom: GeoJSON.Geometry): [number, number] {
+    if (geom.type === "Polygon") {
+        return getCentroid(geom.coordinates[0] as [number, number][]);
+    }
+    if (geom.type === "MultiPolygon") {
+        return getCentroid(geom.coordinates[0][0] as [number, number][]);
+    }
+    return [0, 0];
+}
+
+function isPointInPolygon(point: [number, number], polygon: [number, number][][]): boolean {
+    const [x, y] = point;
+    let inside = false;
+    for (const ring of polygon) {
+        for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+            const xi = ring[i][0], yi = ring[i][1];
+            const xj = ring[j][0], yj = ring[j][1];
+            const intersect = ((yi > y) !== (yj > y))
+                && (x < (xj - xi) * (y - yi) / (yj - yi) + xi);
+            if (intersect) inside = !inside;
+        }
+    }
+    return inside;
+}
+
+function isPointInGeometry(point: [number, number], geom: GeoJSON.Geometry): boolean {
+    if (geom.type === "Polygon") {
+        return isPointInPolygon(point, geom.coordinates as [number, number][][]);
+    }
+    if (geom.type === "MultiPolygon") {
+        return (geom.coordinates as [number, number][][][]).some(poly => isPointInPolygon(point, poly));
+    }
+    return false;
+}
+
 function parseRai(v: unknown): number {
     if (!v) return 0;
     const s = String(v).trim();
@@ -150,14 +211,22 @@ function ageDistribution(age: number, conf: number) {
 
 function profileToBarPoints(profile: YearlyEstimate[], startAge: number): BarPoint[] {
     return profile.map((item, i) => {
-        const age = startAge + i;
+        const age = Math.min(35, Math.max(0, startAge + i));
+        // Step 1: Estimate Standard Error (SE) from 95% Confidence Interval bounds
+        // Formula: SE ≈ (Upper - Lower) / (2 * 1.96) = (Upper - Lower) / 3.92
+        const se = (item.ci_upper_tCO2e - item.ci_lower_tCO2e) / 3.92;
+
+        // Step 2 & 4: Calculate 95% CI of the value
+        // Formula: 95% CI Margin = 1.96 * SE
+        const errorMargin = 1.96 * se;
+
         return {
             age,
             yearBE: item.year + 543,
             co2: item.total_carbon_tCO2e,
             cycle: Math.floor(i / 7),
             cycleAge: age,
-            errorMargin: (item.ci_upper_tCO2e - item.ci_lower_tCO2e) / 2,
+            errorMargin,
         };
     });
 }
@@ -165,28 +234,49 @@ function profileToBarPoints(profile: YearlyEstimate[], startAge: number): BarPoi
 function aggregateProfiles(responses: EstimationResponse[], startAges: number[]): BarPoint[] {
     const profiles = responses.map(r => r.carbon_profile ?? []);
     if (!profiles.length || !profiles[0].length) return [];
-    const len = Math.min(...profiles.map(p => p.length));
+    const len = Math.max(...profiles.map(p => p.length));
     const pts: BarPoint[] = [];
+    const baseYearBE = profiles[0][0]?.year + 543;
+
     for (let j = 0; j < len; j++) {
-        const yearBE = profiles[0][j].year + 543;
-        let totalCo2 = 0, sumSqErr = 0, totalAge = 0;
+        const yearBE = baseYearBE + j;
+        let totalCo2 = 0;
+        let sumSqSE = 0; // Sum of squared Standard Errors
+        let totalAge = 0;
+
         for (let i = 0; i < profiles.length; i++) {
-            const item = profiles[i][j];
+            const profile = profiles[i];
+            // If the loop index j exceeds this plot's profile length, carry over its last available point (plateau)
+            const item = j < profile.length ? profile[j] : profile[profile.length - 1];
             if (!item) continue;
             totalCo2 += item.total_carbon_tCO2e;
-            const err = (item.ci_upper_tCO2e - item.ci_lower_tCO2e) / 2;
-            sumSqErr += err * err;
-            totalAge += startAges[i] + j;
+
+            // Step 1: Estimate SE for each plot from 95% CI bounds
+            // SE = (Upper - Lower) / 3.92
+            const se = (item.ci_upper_tCO2e - item.ci_lower_tCO2e) / 3.92;
+
+            // Sum of squared SEs for pooling (RSS)
+            sumSqSE += se * se;
+
+            totalAge += Math.min(35, Math.max(0, startAges[i] + j));
         }
-        const avgAge = Math.round(totalAge / profiles.length);
-        if (avgAge > 35) break;
+
+        // Step 3: SE of the sum (Pooled SE)
+        // SE_total = Math.sqrt(sumSqSE)
+        const totalSE = Math.sqrt(sumSqSE);
+
+        // Step 4: 95% CI of the combined total
+        // 95% CI Margin = 1.96 * SE_total
+        const errorMargin = 1.96 * totalSE;
+
+        const avgAge = Math.min(35, Math.max(0, Math.round(totalAge / profiles.length)));
         pts.push({
             age: avgAge,
             yearBE,
             co2: totalCo2,
             cycle: Math.floor(j / 7),
             cycleAge: avgAge,
-            errorMargin: Math.sqrt(sumSqErr),
+            errorMargin,
         });
     }
     return pts;
@@ -438,6 +528,7 @@ export function ParcelResultsPanel({
     searchCount,
     searchTruncated,
     parcelFeatures,
+    luFeatures = [],
     userDisplayName = "",
     drawnGeometry = null,
     onFlyTo,
@@ -454,6 +545,7 @@ export function ParcelResultsPanel({
     onFinishDraw,
     onCancelDraw,
     onLandUseChange,
+    onProjectTypeChange,
 }: Props) {
     const [expandedIdx, setExpandedIdx] = useState<number | null>(0);
     const [plotTabs, setPlotTabs] = useState<Record<number, PlotTab>>({});
@@ -465,30 +557,142 @@ export function ParcelResultsPanel({
     const plots = useMemo(() => parcelFeatures.map(computePlot), [parcelFeatures]);
     const totalArea = useMemo(() => plots.reduce((s, p) => s + p.areaRai, 0), [plots]);
 
-    // Build real land-use area data from parcelFeatures (lu_polygon properties from plantation-info API)
+    console.log("[ParcelResultsPanel] Render/Props:", {
+        parcelFeaturesCount: parcelFeatures.length,
+        luFeaturesCount: luFeatures.length,
+        plotsCount: plots.length,
+        totalArea,
+        parcelFeatures,
+        luFeatures
+    });
+
+    // Build real land-use area data from luFeatures (lu_polygon properties from plantation-info API)
     const luRealData = useMemo(() => {
-        const data: Record<string, { rai: number; pct: number }> = {};
-        let totalM2 = 0;
-        for (const feat of parcelFeatures) {
+        const data: Record<string, { rai: number; pct: number; desc?: string }> = {};
+        const featuresToUse = luFeatures.length > 0 ? luFeatures : parcelFeatures;
+
+        // 1. Calculate the total raw area of the intersected land use features
+        let totalIntersectedM2 = 0;
+        for (const feat of featuresToUse) {
             const p = (feat.properties ?? {}) as Record<string, unknown>;
             const m2 = (p.area_m2 as number) || 0;
-            if (p.lu_class) totalM2 += m2;
+            if (p.lu_class) {
+                totalIntersectedM2 += m2;
+            }
         }
-        for (const feat of parcelFeatures) {
+
+        // 2. We want the sum of land use areas to match totalArea (which is totalDrawnRai)
+        const scaleFactor = (totalIntersectedM2 > 0 && totalArea > 0)
+            ? (totalArea * 1600) / totalIntersectedM2
+            : 1.0;
+
+        // 3. Process each feature and apply scaling
+        for (const feat of featuresToUse) {
             const p = (feat.properties ?? {}) as Record<string, unknown>;
             const cls = p.lu_class as string | undefined;
-            const m2 = (p.area_m2 as number) || 0;
-            const pct = (p.area_percent as number) || (totalM2 > 0 ? (m2 / totalM2) * 100 : 0);
-            if (cls) data[cls] = { rai: m2 / 1600, pct: Math.round(pct * 10) / 10 };
+            const desc = p.lu_class_desc_th as string | undefined;
+            const rawM2 = (p.area_m2 as number) || 0;
+
+            if (cls) {
+                const scaledM2 = rawM2 * scaleFactor;
+                const scaledRai = scaledM2 / 1600;
+                const scaledPct = totalIntersectedM2 > 0 ? (rawM2 / totalIntersectedM2) * 100 : 0;
+
+                if (!data[cls]) {
+                    data[cls] = { rai: 0, pct: 0, desc: desc || "" };
+                }
+                data[cls].rai += scaledRai;
+                data[cls].pct += scaledPct;
+                if (desc) data[cls].desc = desc;
+            }
         }
-        // "A" parent = sum of all A-type lu classes
-        const aM2 = parcelFeatures.reduce((s, f) => {
-            const p = (f.properties ?? {}) as Record<string, unknown>;
-            return (p.lu_class as string)?.startsWith("A") ? s + ((p.area_m2 as number) || 0) : s;
-        }, 0);
-        if (aM2 > 0) data["A"] = { rai: aM2 / 1600, pct: Math.round(totalM2 > 0 ? (aM2 / totalM2) * 1000 : 0) / 10 };
+
+        // 4. Calculate parent "A" area as the sum of all A subcategories
+        let aRai = 0;
+        let aPct = 0;
+        for (const key in data) {
+            if (key.startsWith("A") && key !== "A") {
+                aRai += data[key].rai;
+                aPct += data[key].pct;
+            }
+        }
+        if (aRai > 0) {
+            data["A"] = {
+                rai: aRai,
+                pct: aPct,
+                desc: "พื้นที่เกษตรกรรม"
+            };
+        }
+
+        // 5. Round the results nicely for display
+        const parentKeys = ["A", "U", "F", "W", "M"];
+
+        let roundedParentRaiSum = 0;
+        let roundedParentPctSum = 0;
+        let largestParentKey = "";
+        let maxRai = -1;
+
+        for (const key in data) {
+            data[key].rai = Math.round(data[key].rai * 100) / 100;
+            data[key].pct = Math.round(data[key].pct * 10) / 10;
+
+            if (parentKeys.includes(key)) {
+                roundedParentRaiSum += data[key].rai;
+                roundedParentPctSum += data[key].pct;
+                if (data[key].rai > maxRai) {
+                    maxRai = data[key].rai;
+                    largestParentKey = key;
+                }
+            }
+        }
+
+        // Adjust parent categories to sum up to totalArea and 100.0% exactly
+        if (totalArea > 0 && largestParentKey) {
+            const raiDiff = totalArea - roundedParentRaiSum;
+            const pctDiff = 100.0 - roundedParentPctSum;
+
+            if (Math.abs(raiDiff) < 0.2) {
+                data[largestParentKey].rai = Math.round((data[largestParentKey].rai + raiDiff) * 100) / 100;
+            }
+            if (Math.abs(pctDiff) < 2.0) {
+                data[largestParentKey].pct = Math.round((data[largestParentKey].pct + pctDiff) * 10) / 10;
+            }
+        }
+
+        // Adjust subcategories of "A" so they sum up to data["A"].rai and data["A"].pct exactly
+        if (data["A"]) {
+            const subKeys = Object.keys(data).filter(k => k.startsWith("A") && k !== "A");
+            if (subKeys.length > 0) {
+                let roundedSubRaiSum = 0;
+                let roundedSubPctSum = 0;
+                let largestSubKey = "";
+                let maxSubRai = -1;
+
+                subKeys.forEach(k => {
+                    roundedSubRaiSum += data[k].rai;
+                    roundedSubPctSum += data[k].pct;
+                    if (data[k].rai > maxSubRai) {
+                        maxSubRai = data[k].rai;
+                        largestSubKey = k;
+                    }
+                });
+
+                if (largestSubKey) {
+                    const subRaiDiff = data["A"].rai - roundedSubRaiSum;
+                    const subPctDiff = data["A"].pct - roundedSubPctSum;
+
+                    if (Math.abs(subRaiDiff) < 0.2) {
+                        data[largestSubKey].rai = Math.round((data[largestSubKey].rai + subRaiDiff) * 100) / 100;
+                    }
+                    if (Math.abs(subPctDiff) < 2.0) {
+                        data[largestSubKey].pct = Math.round((data[largestSubKey].pct + subPctDiff) * 10) / 10;
+                    }
+                }
+            }
+        }
+
         return data;
-    }, [parcelFeatures]);
+    }, [parcelFeatures, luFeatures, totalArea]);
     const totalCO2 = useMemo(() => plots.reduce((s, p) => s + p.co2, 0), [plots]);
     const summaryPts = useMemo(() => summaryForecast(plots, summaryFcYrs), [plots, summaryFcYrs]);
     const dominantProvince = useMemo(() => {
@@ -525,6 +729,11 @@ export function ParcelResultsPanel({
     const [processingCarbon, setProcessingCarbon] = useState(false);
     const [carbonErr, setCarbonErr] = useState<string | null>(null);
 
+    const hasEmptyStatus = useMemo(() => {
+        if (plotForms.length === 0) return true;
+        return plotForms.some(f => !f.plantStatus);
+    }, [plotForms]);
+
     // Initialize plotForms automatically when ready
     useEffect(() => {
         if (plots.length !== plotForms.length) {
@@ -535,8 +744,19 @@ export function ParcelResultsPanel({
                         const feat = parcelFeatures[i];
                         const props = feat?.properties as any || {};
                         const initialLU = { A: true, A302: true };
+
+                        let initialStatus: "new" | "old" | "" = "";
+                        if (props.plantYearBE) {
+                            const yStr = String(props.plantYearBE);
+                            if (NEW_YEAR_OPTIONS.includes(yStr)) {
+                                initialStatus = "new";
+                            } else if (OLD_YEAR_OPTIONS.includes(yStr)) {
+                                initialStatus = "old";
+                            }
+                        }
+
                         next.push({
-                            plantStatus: "",
+                            plantStatus: initialStatus,
                             plantYear: props.plantYearBE ? String(props.plantYearBE) : "",
                             treeCount: props.trees ? String(props.trees) : "",
                             variety: props.variety || "",
@@ -554,21 +774,28 @@ export function ParcelResultsPanel({
     }, [plots, plotForms.length, parcelFeatures]);
 
     const handleProcessCarbon = async () => {
+        if (hasEmptyStatus) {
+            setCarbonErr("กรุณากรอกสถานะแปลงให้ครบทุกแปลงก่อนทำการประมวลผล");
+            return;
+        }
         setCarbonErr(null);
         setProcessingCarbon(true);
         const CURRENT_BE_NOW = new Date().getFullYear() + 543;
-        const SUPPORTED_CLONES = ["RRIM 600", "RRIT 251"];
 
-        // Collect all lu classes checked across any plot form
+        // Build polygons array for the estimateCarbon backend API call, one polygon per plot!
+        const polygons: PlantationPolygon[] = [];
         const checkedClasses = new Set<string>();
         plotForms.forEach(f => {
             Object.entries(f.luChecked || {}).forEach(([cls, on]) => { if (on) checkedClasses.add(cls); });
         });
 
-        // Filter to only checked lu_class features
-        const selectedFeats = parcelFeatures.filter(feat => {
+        const featuresToUse = luFeatures.length > 0 ? luFeatures : parcelFeatures;
+
+        // Filter land-use features to only those classes that are checked
+        const selectedFeats = featuresToUse.filter(feat => {
             const luClass = ((feat.properties ?? {}) as Record<string, unknown>).lu_class as string | undefined;
-            return luClass ? checkedClasses.has(luClass) : true; // include non-lu features as-is
+            if (!luClass) return true; // include non-lu features as-is
+            return checkedClasses.has(luClass);
         });
 
         if (selectedFeats.length === 0) {
@@ -577,50 +804,146 @@ export function ParcelResultsPanel({
             return;
         }
 
-        // Combine selected geometries into one MultiPolygon
-        const allRings: GeoJSON.Position[][][] = [];
-        for (const feat of selectedFeats) {
-            const geom = feat.geometry as GeoJSON.Polygon | GeoJSON.MultiPolygon;
-            if (geom.type === "Polygon") allRings.push(geom.coordinates);
-            else if (geom.type === "MultiPolygon") allRings.push(...geom.coordinates);
+        // Group selectedFeats by their containing plot parent index
+        const featsByPlot: Record<number, typeof selectedFeats> = {};
+        for (let idx = 0; idx < parcelFeatures.length; idx++) {
+            featsByPlot[idx] = [];
         }
-        const combinedGeom: GeoJSON.Geometry = allRings.length === 1
-            ? { type: "Polygon", coordinates: allRings[0] }
-            : { type: "MultiPolygon", coordinates: allRings };
 
-        // Use form data from the first plot
-        const form = plotForms[0];
-        const plantYearBE = form?.plantYear ? parseInt(form.plantYear) : 0;
-        const polygons: PlantationPolygon[] = [{
-            id: "selected-lu",
-            geometry: combinedGeom,
-            year_of_planting: plantYearBE > 0 ? plantYearBE - 543 : null,
-            rubber_clone: (form?.variety && SUPPORTED_CLONES.includes(form.variety)) ? form.variety : null,
-            tree_count: form?.treeCount ? (parseInt(form.treeCount) || null) : null,
-            spacing_system: form?.spacing || null,
-        }];
+        selectedFeats.forEach(feat => {
+            const samplePoint = getSamplePoint(feat.geometry);
+            let matchedPlotIdx = 0; // fallback to 0
+            for (let idx = 0; idx < parcelFeatures.length; idx++) {
+                if (isPointInGeometry(samplePoint, parcelFeatures[idx].geometry)) {
+                    matchedPlotIdx = idx;
+                    break;
+                }
+            }
+            featsByPlot[matchedPlotIdx].push(feat);
+        });
+
+        // Now, for each plot `idx`, build its combined geometry and PlantationPolygon!
+        for (let idx = 0; idx < parcelFeatures.length; idx++) {
+            const plotFeats = featsByPlot[idx] || [];
+            if (plotFeats.length === 0) continue; // skip plots with no selected land-use
+
+            const allRings: GeoJSON.Position[][][] = [];
+            for (const feat of plotFeats) {
+                const geom = feat.geometry as GeoJSON.Polygon | GeoJSON.MultiPolygon;
+                if (geom.type === "Polygon") allRings.push(geom.coordinates);
+                else if (geom.type === "MultiPolygon") allRings.push(...geom.coordinates);
+            }
+            const combinedGeom: GeoJSON.Geometry = allRings.length === 1
+                ? { type: "Polygon", coordinates: allRings[0] }
+                : { type: "MultiPolygon", coordinates: allRings };
+
+            const form = plotForms[idx] || { plantYear: "", variety: "", treeCount: "", spacing: "2.5*8" };
+            const backendYearBE = plots[idx]?.plantYearBE || 0;
+            const userYearBE = form.plantYear ? parseInt(form.plantYear) : 0;
+
+            let finalPlantYearBE = 0;
+
+            if (userYearBE > 0) {
+                finalPlantYearBE = userYearBE;
+            } else {
+                if (backendYearBE > 0) {
+                    finalPlantYearBE = backendYearBE;
+                } else {
+                    finalPlantYearBE = CURRENT_BE_NOW - 5;
+                }
+            }
+
+            polygons.push({
+                id: `plot-${idx}`,
+                geometry: combinedGeom,
+                year_of_planting: finalPlantYearBE - 543, // Convert to CE for Backend API
+                rubber_clone: (form.variety && SUPPORTED_CLONES.includes(form.variety)) ? form.variety : null,
+                tree_count: form.treeCount ? (parseInt(form.treeCount) || null) : null,
+                spacing_system: form.spacing || null,
+            });
+        }
+
+        if (polygons.length === 0) {
+            setCarbonErr("ไม่พบขอบเขตพื้นที่ที่สามารถประมวลผลได้");
+            setProcessingCarbon(false);
+            return;
+        }
 
         try {
             const responses = await estimateCarbon(polygons);
+            console.log("[KeptCarbon] Backend responses:", JSON.stringify(responses, null, 2));
             setBackendResponses(responses);
 
-            const startAge = plantYearBE > 0 ? CURRENT_BE_NOW - plantYearBE : (plots[0]?.age || 5);
-            const finalPlantYear = plantYearBE > 0 ? plantYearBE : (plots[0]?.plantYearBE || CURRENT_BE_NOW - startAge);
-            const userTrees = form?.treeCount ? parseInt(form.treeCount) : 0;
-            const totalAreaRai = selectedFeats.reduce((s, f) => s + (((f.properties ?? {}) as Record<string, unknown>).area_m2 as number || 0) / 1600, 0);
-            const finalTrees = userTrees > 0 ? userTrees : Math.round(totalAreaRai * 76);
-            const profile = responses[0]?.carbon_profile ?? [];
+            const results: CarbonResult[] = [];
+            for (let idx = 0; idx < parcelFeatures.length; idx++) {
+                const form = plotForms[idx] || { plantYear: "", variety: "", treeCount: "", spacing: "2.5*8", luChecked: {} };
+                const plotFeats = featsByPlot[idx] || [];
+                const totalAreaRai = plotFeats.reduce((s, f) => s + (((f.properties ?? {}) as Record<string, unknown>).area_m2 as number || 0) / 1600, 0);
 
-            const results: CarbonResult[] = [{
-                plotIdx: 0,
-                age: startAge,
-                plantYearBE: finalPlantYear,
-                trees: finalTrees,
-                spacing: form?.spacing || "2.5x8",
-                variety: form?.variety || "RRIM 600",
-                co2Now: profile[0]?.total_carbon_tCO2e ?? 0,
-                source: "backend" as const,
-            }];
+                // --- Calculate real land use breakdown for this plot ---
+                const totalPlotSelectedM2 = plotFeats.reduce((s, f) => s + (((f.properties ?? {}) as Record<string, unknown>).area_m2 as number || 0), 0);
+                const totalPlotSelectedRai = totalPlotSelectedM2 / 1600;
+
+                const classM2s: Record<string, number> = {};
+                plotFeats.forEach(feat => {
+                    const luClass = ((feat.properties ?? {}) as Record<string, unknown>).lu_class as string || "M";
+                    classM2s[luClass] = (classM2s[luClass] || 0) + (((feat.properties ?? {}) as Record<string, unknown>).area_m2 as number || 0);
+                });
+
+                const luBreakdown: Record<string, { rai: number; pct: number; desc: string }> = {};
+                Object.entries(classM2s).forEach(([cls, m2]) => {
+                    const rai = m2 / 1600;
+                    const pct = totalPlotSelectedM2 > 0 ? (m2 / totalPlotSelectedM2) * 100 : 0;
+                    luBreakdown[cls] = {
+                        rai: Math.round(rai * 100) / 100,
+                        pct: Math.round(pct * 10) / 10,
+                        desc: LU_DESC_MAP[cls] || cls
+                    };
+                });
+
+                const backendYearBE = plots[idx]?.plantYearBE || 0;
+                const userYearBE = form.plantYear ? parseInt(form.plantYear) : 0;
+
+                let finalPlantYearBE = 0;
+                let yearUsedDetails = "";
+
+                if (userYearBE > 0) {
+                    finalPlantYearBE = userYearBE;
+                    yearUsedDetails = `ใช้ตามที่คุณระบุ (พ.ศ. ${userYearBE})`;
+                } else {
+                    if (backendYearBE > 0) {
+                        finalPlantYearBE = backendYearBE;
+                        yearUsedDetails = `ใช้ปีจากดาวเทียมที่ตรวจพบ (พ.ศ. ${backendYearBE})`;
+                    } else {
+                        finalPlantYearBE = CURRENT_BE_NOW - 5;
+                        yearUsedDetails = `ใช้ค่าเริ่มต้นระบบ (พ.ศ. ${finalPlantYearBE})`;
+                    }
+                }
+
+                const startAge = Math.max(0, CURRENT_BE_NOW - finalPlantYearBE);
+                const userTrees = form.treeCount ? parseInt(form.treeCount) : 0;
+                const finalTrees = userTrees > 0 ? userTrees : Math.round(totalAreaRai * 76);
+
+                // Find corresponding response by matching polygon ID
+                const resp = responses.find(r => r.polygon_id === `plot-${idx}`);
+                const profile = resp?.carbon_profile ?? [];
+                const co2Now = profile[0]?.total_carbon_tCO2e ?? 0;
+
+                results.push({
+                    plotIdx: idx,
+                    age: startAge,
+                    plantYearBE: finalPlantYearBE,
+                    trees: finalTrees,
+                    spacing: form.spacing || "2.5x8",
+                    variety: form.variety || "RRIM 600",
+                    co2Now,
+                    source: "backend" as const,
+                    yearUsedDetails,
+                    selectedAreaRai: totalPlotSelectedRai,
+                    luBreakdown
+                });
+            }
+
             setCarbonResults(results);
             if (onMapPlotSelected) onMapPlotSelected("total");
             setSubStep("carbon");
@@ -636,6 +959,10 @@ export function ParcelResultsPanel({
     // Removed: if (!(searchRunning || searchErr || searchCount !== null)) return null;
 
     const handleSave = async (overrideResults?: CarbonResult[]) => {
+        if (hasEmptyStatus) {
+            setCarbonErr("กรุณากรอกสถานะแปลงให้ครบทุกแปลงก่อนทำการบันทึก");
+            return;
+        }
         const resultsToSave = overrideResults || carbonResults;
         const hasCarbonResults = resultsToSave.length > 0;
 
@@ -656,7 +983,7 @@ export function ParcelResultsPanel({
                 const userPlantYear = form?.plantYear ? parseInt(form.plantYear) : 0;
                 const userTrees = form?.treeCount ? parseInt(form.treeCount) : 0;
 
-                const age = cr?.age ?? (userPlantYear > 0 ? (CURRENT_BE_NOW - userPlantYear) : 0);
+                const age = Math.max(0, cr?.age ?? (userPlantYear > 0 ? (CURRENT_BE_NOW - userPlantYear) : 0));
                 const trees = cr?.trees ?? (userTrees > 0 ? userTrees : 0);
                 const spacing = cr?.spacing || form?.spacing || "";
                 const finalPlantYear = cr?.plantYearBE ?? (userPlantYear > 0 ? userPlantYear : 0);
@@ -725,8 +1052,8 @@ export function ParcelResultsPanel({
                 <div className="s1-results-error">
                     <i className="bi bi-exclamation-triangle me-2" />{searchErr}
                 </div>
-                {onBack && (
-                    <button className="mds-btn mds-btn-soft" style={{ marginTop: 12 }} onClick={onBack}>
+                {onReset && (
+                    <button className="mds-btn mds-btn-soft" style={{ marginTop: 12 }} onClick={onReset}>
                         <i className="bi bi-arrow-left me-1" /> กลับขั้นตอนที่ 1
                     </button>
                 )}
@@ -753,25 +1080,112 @@ export function ParcelResultsPanel({
                         <div className="prp-subtitle">กรอกหรือข้ามได้ — ข้อมูลจะนำไปประมวลผลคาร์บอน</div>
                     </div>
                     {onBack && (
-                        <div
+                        <button
                             onClick={onBack}
                             style={{
-                                fontSize: 11,
+                                fontSize: isMobile ? 10 : 11,
                                 fontWeight: 700,
-                                color: "#64748b",
+                                color: "#0f766e",
                                 cursor: "pointer",
-                                background: "rgba(100,116,139,0.08)",
-                                padding: "6px 10px",
-                                borderRadius: 8,
+                                background: "#f0fdfa",
+                                border: "1px solid rgba(13,148,136,0.3)",
+                                padding: isMobile ? "4px 8px" : "6px 12px",
+                                borderRadius: isMobile ? 6 : 8,
                                 display: "flex",
                                 alignItems: "center",
-                                gap: 4,
-                                transition: "all 0.2s"
+                                gap: isMobile ? 4 : 6,
+                                transition: "all 0.2s",
+                                outline: "none",
+                                boxShadow: "0 2px 5px rgba(13,148,136,0.05)"
+                            }}
+                            onMouseOver={(e) => {
+                                e.currentTarget.style.background = "#ccfbf1";
+                                e.currentTarget.style.borderColor = "rgba(13,148,136,0.5)";
+                            }}
+                            onMouseOut={(e) => {
+                                e.currentTarget.style.background = "#f0fdfa";
+                                e.currentTarget.style.borderColor = "rgba(13,148,136,0.3)";
                             }}
                         >
                             <i className="bi bi-arrow-left-circle" /> ย้อนกลับ
-                        </div>
+                        </button>
                     )}
+                </div>
+
+                {/* Action buttons (Moved to top) */}
+                {carbonErr && (
+                    <div style={{ marginBottom: 16, padding: "10px 14px", background: "rgba(220,38,38,0.08)", border: "1px solid rgba(220,38,38,0.25)", borderRadius: 10, fontSize: 12, color: "#dc2626", display: "flex", alignItems: "flex-start", gap: 8 }}>
+                        <i className="bi bi-exclamation-triangle-fill" style={{ flexShrink: 0, marginTop: 1 }} />
+                        <span>{carbonErr}</span>
+                    </div>
+                )}
+                {(!projectName.trim() || hasEmptyStatus) && (
+                    <div style={{
+                        marginBottom: 16,
+                        padding: "10px 14px",
+                        background: "rgba(249,115,22,0.06)",
+                        border: "1px solid rgba(249,115,22,0.2)",
+                        borderRadius: 10,
+                        fontSize: 12,
+                        color: "#c2410c",
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 8,
+                        fontWeight: 600
+                    }}>
+                        <i className="bi bi-exclamation-circle-fill" style={{ flexShrink: 0 }} />
+                        <span>
+                            {!projectName.trim() && hasEmptyStatus
+                                ? 'กรุณากรอก "ชื่อโครงการ" และเลือก "สถานะแปลง" ให้ครบทุกแปลง เพื่อประมวลผลหรือบันทึกข้อมูล'
+                                : !projectName.trim()
+                                ? 'กรุณากรอก "ชื่อโครงการ" เพื่อประมวลผลหรือบันทึกข้อมูล'
+                                : 'กรุณาเลือก "สถานะแปลง" ให้ครบทุกแปลง เพื่อประมวลผลหรือบันทึกข้อมูล'
+                            }
+                        </span>
+                    </div>
+                )}
+                <div style={{ display: "flex", gap: isMobile ? 6 : 8, marginBottom: 16, flexWrap: "nowrap" }}>
+                    {onDrawMore && !isDrawing && (
+                        <button className="prp-btn-ghost" style={{ flex: 1, padding: isMobile ? "8px 2px" : "10px 4px", fontSize: isMobile ? 11 : 12, display: "flex", flexDirection: "column", alignItems: "center", gap: isMobile ? 4 : 6, background: "rgba(16,185,129,0.1)", color: "#059669", border: "1px solid rgba(16,185,129,0.2)", borderRadius: isMobile ? 10 : 12 }} onClick={onDrawMore}>
+                            <i className="bi bi-pencil-square" style={{ fontSize: isMobile ? 16 : 18 }} /> <span style={{ fontWeight: 600, textAlign: "center", lineHeight: 1.2 }}>วาดแปลงเพิ่ม</span>
+                        </button>
+                    )}
+                    <button
+                        className="prp-btn-primary"
+                        onClick={() => handleSave([])}
+                        disabled={!projectName.trim() || hasEmptyStatus || saveState === "saving"}
+                        style={{
+                            flex: 1, padding: isMobile ? "8px 2px" : "10px 4px", fontSize: isMobile ? 11 : 12, display: "flex", flexDirection: "column", alignItems: "center", gap: isMobile ? 4 : 6,
+                            background: (projectName.trim() && !hasEmptyStatus) ? "linear-gradient(135deg,#0ea5e9,#0284c7)" : "#cbd5e1",
+                            color: "#fff", border: "none", borderRadius: isMobile ? 10 : 12,
+                            cursor: (projectName.trim() && !hasEmptyStatus) ? "pointer" : "not-allowed",
+                            boxShadow: (projectName.trim() && !hasEmptyStatus) ? "0 4px 10px rgba(2,132,199,0.2)" : "none"
+                        }}
+                    >
+                        {saveState === "saving" ? (
+                            <><span className="s1-spin" style={{ width: isMobile ? 16 : 18, height: isMobile ? 16 : 18, border: "2px solid rgba(255,255,255,0.3)", borderTopColor: "#fff" }} /> <span style={{ fontWeight: 600, textAlign: "center", lineHeight: 1.2 }}>กำลังบันทึก</span></>
+                        ) : (
+                            <><i className="bi bi-save" style={{ fontSize: isMobile ? 16 : 18 }} /> <span style={{ fontWeight: 600, textAlign: "center", lineHeight: 1.2 }}>บันทึกข้อมูล</span></>
+                        )}
+                    </button>
+                    <button
+                        className="prp-btn-primary"
+                        onClick={() => { void handleProcessCarbon(); }}
+                        disabled={!projectName.trim() || hasEmptyStatus || processingCarbon}
+                        style={{
+                            flex: 1, padding: isMobile ? "8px 2px" : "10px 4px", fontSize: isMobile ? 11 : 12, display: "flex", flexDirection: "column", alignItems: "center", gap: isMobile ? 4 : 6,
+                            background: (projectName.trim() && !hasEmptyStatus && !processingCarbon) ? "linear-gradient(135deg,#10b981,#059669)" : "#cbd5e1",
+                            color: "#fff", border: "none", borderRadius: isMobile ? 10 : 12,
+                            cursor: (projectName.trim() && !hasEmptyStatus && !processingCarbon) ? "pointer" : "not-allowed",
+                            boxShadow: (projectName.trim() && !hasEmptyStatus && !processingCarbon) ? "0 4px 10px rgba(16,185,129,0.2)" : "none"
+                        }}
+                    >
+                        {processingCarbon ? (
+                            <><span className="s1-spin" style={{ width: isMobile ? 16 : 18, height: isMobile ? 16 : 18, border: "2px solid rgba(255,255,255,0.3)", borderTopColor: "#fff" }} /> <span style={{ fontWeight: 600, textAlign: "center", lineHeight: 1.2 }}>ประมวลผล</span></>
+                        ) : (
+                            <><i className="bi bi-graph-up-arrow" style={{ fontSize: isMobile ? 16 : 18 }} /> <span style={{ fontWeight: 600, textAlign: "center", lineHeight: 1.2 }}>ประมวลผล</span></>
+                        )}
+                    </button>
                 </div>
 
                 {/* Project name — shared */}
@@ -845,15 +1259,15 @@ export function ParcelResultsPanel({
                                         {/* Status Selection */}
                                         <div style={{ padding: isMobile ? "16px 16px 0" : "20px 24px 0", background: "#fff" }}>
                                             <div style={{ fontSize: 13, fontWeight: 700, color: "#1e293b", marginBottom: 8, display: "flex", alignItems: "center", gap: 6 }}>
-                                                <i className="bi bi-info-circle" style={{ color: "#10b981" }} /> สถานะแปลง
+                                                <i className="bi bi-info-circle" style={{ color: "#10b981" }} /> สถานะแปลง <span style={{ color: "#ef4444" }}>*</span>
                                             </div>
                                             <div style={{ display: "flex", gap: 16 }}>
                                                 <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, cursor: "pointer" }}>
-                                                    <input type="radio" name={`status-${i}`} value="new" checked={form.plantStatus === "new"} onChange={() => { updateForm(i, "plantStatus", "new"); updateForm(i, "plantYear", ""); }} />
+                                                    <input type="radio" name={`status-${i}`} value="new" checked={form.plantStatus === "new"} onChange={() => { updateForm(i, "plantStatus", "new"); updateForm(i, "plantYear", ""); onProjectTypeChange?.("replanting"); }} />
                                                     เริ่มปลูก
                                                 </label>
                                                 <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, cursor: "pointer" }}>
-                                                    <input type="radio" name={`status-${i}`} value="old" checked={form.plantStatus === "old"} onChange={() => { updateForm(i, "plantStatus", "old"); updateForm(i, "plantYear", ""); }} />
+                                                    <input type="radio" name={`status-${i}`} value="old" checked={form.plantStatus === "old"} onChange={() => { updateForm(i, "plantStatus", "old"); updateForm(i, "plantYear", ""); onProjectTypeChange?.("existing"); }} />
                                                     ปลูกมาแล้ว
                                                 </label>
                                             </div>
@@ -931,51 +1345,115 @@ export function ParcelResultsPanel({
                                                 <i className="bi bi-layers" style={{ color: "#10b981" }} /> ชั้นข้อมูลการใช้ประโยชน์ที่ดิน (กรมพัฒนาที่ดิน)
                                             </div>
                                             <div style={{ display: "flex", flexDirection: "column", gap: 10, fontSize: 13 }}>
-                                                {[
-                                                    { id: "F", label: "F พื้นที่ป่าไม้", fixed: false },
-                                                    { id: "A", label: "A พื้นที่เกษตรกรรม", fixed: true },
-                                                    { id: "A302", label: "A302 ยางพารา (หมวดย่อย A)", fixed: true, indent: true },
-                                                    { id: "A303", label: "A303 ปาล์มน้ำมัน (หมวดย่อย A)", fixed: false, indent: true },
-                                                    { id: "A304", label: "A304 ไม้ผล (หมวดย่อย A)", fixed: false, indent: true },
-                                                    { id: "M", label: "M พื้นที่อื่นๆ", fixed: false },
-                                                    { id: "U", label: "U พื้นที่สิ่งปลูกสร้าง", fixed: false, disabled: true },
-                                                    { id: "W", label: "W แหล่งน้ำ", fixed: false, disabled: true },
-                                                ].map(lu => {
-                                                    const isChecked = form.luChecked?.[lu.id] || false;
-                                                    const realData = luRealData[lu.id];
-                                                    const hasArea = realData && realData.rai > 0;
-                                                    return (
-                                                        <label key={lu.id} style={{
-                                                            display: "flex", alignItems: "center", gap: 8,
-                                                            cursor: lu.disabled || lu.fixed ? "not-allowed" : "pointer",
-                                                            opacity: lu.disabled ? 0.4 : (!hasArea && !lu.fixed ? 0.45 : 1),
-                                                            paddingLeft: lu.indent ? 24 : 0
-                                                        }}>
-                                                            <input
-                                                                type="checkbox"
-                                                                checked={isChecked}
-                                                                disabled={lu.fixed || lu.disabled}
-                                                                style={{ accentColor: isChecked ? "#f97316" : "#94a3b8", width: 16, height: 16 }}
-                                                                onChange={(e) => {
-                                                                    const newChecked = { ...form.luChecked, [lu.id]: e.target.checked };
-                                                                    setPlotForms(prev => prev.map((f, idx) => idx === i ? { ...f, luChecked: newChecked } : f));
-                                                                    onLandUseChange?.(newChecked);
-                                                                }}
-                                                            />
-                                                            <span style={{ flex: 1, color: "#334155", fontWeight: isChecked ? 600 : 400 }}>{lu.label}</span>
-                                                            <span style={{ color: hasArea ? (isChecked ? "#ea580c" : "#64748b") : "#cbd5e1", fontSize: 12, fontWeight: 700 }}>
-                                                                {hasArea ? `${realData.rai.toFixed(2)} ไร่` : "0.00 ไร่"}
-                                                                <span style={{ opacity: 0.7, fontSize: 11 }}> ({hasArea ? realData.pct : 0}%)</span>
-                                                            </span>
-                                                        </label>
-                                                    );
-                                                })}
+                                                {(() => {
+                                                    const baseLU = [
+                                                        { id: "U", label: "U พื้นที่ชุมชนและสิ่งปลูกสร้าง", disabled: false, fixed: false, color: "#ef4444" },
+                                                        { id: "A", label: "A พื้นที่เกษตรกรรม", disabled: false, fixed: true, color: "#84cc16" },
+                                                        { id: "F", label: "F พื้นที่ป่าไม้", disabled: false, fixed: false, color: "#166534" },
+                                                        { id: "W", label: "W แหล่งน้ำ", disabled: true, fixed: false, color: "#3b82f6" },
+                                                        { id: "M", label: "M พื้นที่เบ็ดเตล็ด", disabled: true, fixed: false, color: "#9ca3af" },
+                                                    ];
+                                                    const displayLU: any[] = [];
+                                                    baseLU.forEach(base => {
+                                                        displayLU.push(base);
+                                                        if (base.id === "A") {
+                                                            const aSubtypes = Object.keys(luRealData).filter(k => k.startsWith("A") && k !== "A").sort();
+                                                            if (!aSubtypes.includes("A302")) aSubtypes.push("A302");
+                                                            if (!aSubtypes.includes("A303")) aSubtypes.push("A303");
+                                                            if (!aSubtypes.includes("A304")) aSubtypes.push("A304");
+
+                                                            aSubtypes.forEach(sub => {
+                                                                const desc = luRealData[sub]?.desc || (sub === "A302" ? "ยางพารา" : sub === "A303" ? "ปาล์มน้ำมัน" : sub === "A304" ? "ไม้ผล" : "หมวดย่อย A");
+                                                                 const isA302 = sub === "A302";
+                                                                 const isA302Detected = !!(luRealData["A302"] && luRealData["A302"].rai > 0);
+                                                                 displayLU.push({
+                                                                     id: sub,
+                                                                     label: `${sub} ${desc}`,
+                                                                     disabled: isA302 ? !isA302Detected : false,
+                                                                     fixed: isA302 ? isA302Detected : false,
+                                                                     indent: true,
+                                                                     color: "#84cc16"
+                                                                 });
+                                                            });
+                                                        }
+                                                    });
+
+                                                    return displayLU.map(lu => {
+                                                        // Fallback checked values to false except what was originally initialized
+                                                        // W and M are forced to be false because they are disabled.
+                                                        // fixed items (A, A302) are forced to be true.
+                                                        const isChecked = lu.disabled ? false : (lu.fixed ? true : (form.luChecked?.[lu.id] || false));
+                                                        const realData = luRealData[lu.id];
+                                                        const hasArea = realData && realData.rai > 0;
+                                                        return (
+                                                            <label key={lu.id} style={{
+                                                                display: "flex", alignItems: "center", gap: 8,
+                                                                cursor: (lu.disabled || lu.fixed) ? "not-allowed" : "pointer",
+                                                                opacity: (!hasArea && !lu.disabled && !lu.fixed) ? 0.45 : (lu.disabled ? 0.3 : 1),
+                                                                paddingLeft: lu.indent ? 24 : 0
+                                                            }}>
+                                                                <input
+                                                                    type="checkbox"
+                                                                    checked={isChecked}
+                                                                    disabled={lu.disabled || lu.fixed}
+                                                                    style={{ accentColor: isChecked ? lu.color : "#94a3b8", width: 16, height: 16 }}
+                                                                    onChange={(e) => {
+                                                                        const newChecked = { ...form.luChecked, [lu.id]: e.target.checked };
+                                                                        setPlotForms(prev => prev.map((f, idx) => idx === i ? { ...f, luChecked: newChecked } : f));
+                                                                        onLandUseChange?.(newChecked);
+                                                                    }}
+                                                                />
+                                                                <div style={{ width: 12, height: 12, borderRadius: 2, backgroundColor: lu.color, flexShrink: 0 }} />
+                                                                <span style={{ flex: 1, color: lu.disabled ? "#94a3b8" : "#0f172a", fontWeight: isChecked ? 600 : 400 }}>{lu.label}</span>
+                                                                <span style={{ color: hasArea ? (isChecked ? lu.color : "#64748b") : "#cbd5e1", fontSize: 12, fontWeight: 700 }}>
+                                                                    {hasArea ? `${realData.rai.toFixed(2)} ไร่` : "0.00 ไร่"}
+                                                                    <span style={{ opacity: 0.7, fontSize: 11 }}> ({hasArea ? realData.pct : 0}%)</span>
+                                                                </span>
+                                                            </label>
+                                                        );
+                                                    });
+                                                })()}
                                             </div>
                                             {/* Selected area summary */}
                                             {(() => {
-                                                const selectedRai = Object.entries(form.luChecked || {})
-                                                    .filter(([cls, on]) => on && luRealData[cls])
-                                                    .reduce((s, [cls]) => s + (luRealData[cls]?.rai || 0), 0);
+                                                // 1. Gather all checked leaf categories. 
+                                                // We skip "A" because it is a parent category and summing it would double-count its subcategories.
+                                                const baseLU = [
+                                                    { id: "U", disabled: false, fixed: false },
+                                                    { id: "A", disabled: false, fixed: true },
+                                                    { id: "F", disabled: false, fixed: false },
+                                                    { id: "W", disabled: true, fixed: false },
+                                                    { id: "M", disabled: true, fixed: false },
+                                                ];
+
+                                                const activeLeafIds: string[] = [];
+                                                baseLU.forEach(base => {
+                                                    if (base.id === "A") {
+                                                        const aSubtypes = Object.keys(luRealData).filter(k => k.startsWith("A") && k !== "A").sort();
+                                                        if (!aSubtypes.includes("A302")) aSubtypes.push("A302");
+                                                        if (!aSubtypes.includes("A303")) aSubtypes.push("A303");
+                                                        if (!aSubtypes.includes("A304")) aSubtypes.push("A304");
+
+                                                        aSubtypes.forEach(sub => {
+                                                            const isChecked = sub === "A302" || !!form.luChecked?.[sub];
+                                                            if (isChecked) {
+                                                                activeLeafIds.push(sub);
+                                                            }
+                                                        });
+                                                    } else {
+                                                        const isChecked = !base.disabled && (base.fixed || !!form.luChecked?.[base.id]);
+                                                        if (isChecked) {
+                                                            activeLeafIds.push(base.id);
+                                                        }
+                                                    }
+                                                });
+
+                                                // 2. Sum the normalized areas from luRealData for each active leaf category
+                                                const selectedRai = activeLeafIds.reduce((sum, cls) => {
+                                                    const realRai = luRealData[cls]?.rai || 0;
+                                                    return sum + realRai;
+                                                }, 0);
+
                                                 return selectedRai > 0 ? (
                                                     <div style={{ marginTop: 12, padding: "8px 12px", background: "rgba(249,115,22,0.08)", borderRadius: 8, border: "1px solid rgba(249,115,22,0.2)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
                                                         <span style={{ fontSize: 12, color: "#92400e", fontWeight: 600 }}>
@@ -995,86 +1473,9 @@ export function ParcelResultsPanel({
                     })}
                 </div>
 
-                {/* Drawing placeholder card */}
-                {isDrawing && (
-                    <div style={{
-                        background: "rgba(16,185,129,0.03)",
-                        border: "2px dashed rgba(16,185,129,0.4)",
-                        borderRadius: 14,
-                        padding: "24px 16px",
-                        display: "flex",
-                        flexDirection: "column",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        gap: 16,
-                    }}>
-                        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 8 }}>
-                            <div className="mds-dot-pulse" style={{ background: "#10b981", width: 10, height: 10, margin: 0 }} />
-                            <div style={{ fontSize: 14, fontWeight: 700, color: "#059669" }}>กำลังวาดแปลงใหม่บนแผนที่...</div>
-                            <div style={{ fontSize: 12, color: "#64748b", textAlign: "center" }}>คลิกบนแผนที่เพื่อเพิ่มจุดขอบเขต หรือดับเบิลคลิกเพื่อปิดแปลง</div>
-                        </div>
-                        <div style={{ display: "flex", gap: 12, width: "100%" }}>
-                            <button
-                                onClick={onCancelDraw}
-                                style={{ flex: 1, background: "#fff", border: "1px solid #cbd5e1", color: "#64748b", padding: "10px", borderRadius: 10, fontSize: 13, fontWeight: 700, cursor: "pointer" }}
-                            >
-                                <i className="bi bi-x-circle me-1" /> ยกเลิก
-                            </button>
-                            <button
-                                onClick={onFinishDraw}
-                                style={{ flex: 1, background: "linear-gradient(135deg,#10b981,#059669)", border: "none", color: "#fff", padding: "10px", borderRadius: 10, fontSize: 13, fontWeight: 700, cursor: "pointer", boxShadow: "0 4px 10px rgba(16,185,129,0.2)" }}
-                            >
-                                <i className="bi bi-check-circle me-1" /> วาดเสร็จแล้ว
-                            </button>
-                        </div>
-                    </div>
-                )}
 
-                {/* Action buttons */}
-                {carbonErr && (
-                    <div style={{ marginTop: 12, padding: "10px 14px", background: "rgba(220,38,38,0.08)", border: "1px solid rgba(220,38,38,0.25)", borderRadius: 10, fontSize: 12, color: "#dc2626", display: "flex", alignItems: "flex-start", gap: 8 }}>
-                        <i className="bi bi-exclamation-triangle-fill" style={{ flexShrink: 0, marginTop: 1 }} />
-                        <span>{carbonErr}</span>
-                    </div>
-                )}
-                <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 18 }}>
-                    <button
-                        className="prp-btn-primary"
-                        onClick={() => { void handleProcessCarbon(); }}
-                        disabled={!projectName.trim() || processingCarbon}
-                        style={{
-                            background: (projectName.trim() && !processingCarbon) ? "linear-gradient(135deg,#10b981,#059669)" : "#cbd5e1",
-                            cursor: (projectName.trim() && !processingCarbon) ? "pointer" : "not-allowed"
-                        }}
-                    >
-                        {processingCarbon ? (
-                            <><span className="s1-spin" style={{ width: 14, height: 14, border: "2px solid rgba(255,255,255,0.3)", borderTopColor: "#fff", marginRight: 8 }} />กำลังประมวลผล...</>
-                        ) : (
-                            <><i className="bi bi-graph-up-arrow me-2" />ประมวลผลคาร์บอน</>
-                        )}
-                    </button>
-                    <button
-                        className="prp-btn-primary"
-                        onClick={() => handleSave([])}
-                        disabled={!projectName.trim() || saveState === "saving"}
-                        style={{
-                            background: projectName.trim() ? "linear-gradient(135deg,#0369a1,#0284c7)" : "#cbd5e1",
-                            cursor: projectName.trim() ? "pointer" : "not-allowed"
-                        }}
-                    >
-                        {saveState === "saving" ? (
-                            <><span className="s1-spin" style={{ width: 14, height: 14, border: "2px solid rgba(255,255,255,0.3)", borderTopColor: "#fff", marginRight: 8 }} /> กำลังบันทึก...</>
-                        ) : (
-                            <><i className="bi bi-floppy-disk me-2" />บันทึกลงฐานข้อมูล</>
-                        )}
-                    </button>
-                    {onDrawMore && !isDrawing && (
-                        <button className="prp-btn-ghost" style={{ background: "rgba(16,185,129,0.1)", color: "#059669" }} onClick={onDrawMore}>
-                            <i className="bi bi-pencil-square me-1" /> วาดแปลงเพิ่ม
-                        </button>
-                    )}
 
-                </div>
+                {/* Action buttons moved to top */}
             </div>
         );
     }
@@ -1101,7 +1502,9 @@ export function ParcelResultsPanel({
                     const initialPlotCarbons = carbonResults.map(c => carbonCo2(c.age, c.trees, c.spacing));
                     const plotStates = carbonResults.map(c => ({ continuousAge: c.age }));
                     const N = plotStates.length;
-                    for (let i = 0; i < 35; i++) {
+                    const maxAge = Math.max(...carbonResults.map(c => c.age));
+                    const numYears = Math.max(1, Math.min(35, 36 - maxAge));
+                    for (let i = 0; i < numYears; i++) {
                         const yearBE = CURRENT_BE + i;
                         let totalCo2 = 0, totalContinuousAge = 0, sumSqMargin = 0;
                         plotStates.forEach((state, idx) => {
@@ -1116,14 +1519,16 @@ export function ParcelResultsPanel({
                             totalContinuousAge += state.continuousAge;
                             state.continuousAge++;
                         });
-                        const avgAge = Math.round(totalContinuousAge / N);
-                        if (avgAge > 35) break;
+                        const avgAge = Math.min(35, Math.max(0, Math.round(totalContinuousAge / N)));
                         pts.push({ age: avgAge, yearBE, co2: totalCo2, cycle: Math.floor(i / 7), cycleAge: avgAge, errorMargin: Math.sqrt(sumSqMargin) });
                     }
                 }
             } else if (cr) {
                 const plotIdx = selectedMapPlotIndex as number;
                 const backendProfile = backendResponses?.[plotIdx]?.carbon_profile;
+                console.log("[KeptCarbon] Step 3 - cr (carbon result):", cr);
+                console.log("[KeptCarbon] Step 3 - backendProfile:", backendProfile);
+                console.log("[KeptCarbon] Step 3 - backendProfile length:", backendProfile?.length, "/ expected:", 35 - cr.age);
                 pts = backendProfile
                     ? profileToBarPoints(backendProfile, cr.age)
                     : buildBarPoints(cr.age, cr.plantYearBE, cr.trees, cr.spacing);
@@ -1166,11 +1571,11 @@ export function ParcelResultsPanel({
                             <div
                                 onClick={() => onMapPlotSelected?.("total")}
                                 style={{
-                                    fontSize: 11,
+                                    fontSize: isMobile ? 10 : 11,
                                     fontWeight: 700,
                                     color: "#059669",
                                     cursor: "pointer",
-                                    padding: "6px 12px",
+                                    padding: isMobile ? "4px 8px" : "6px 12px",
                                     borderRadius: 20,
                                     background: "rgba(16,185,129,0.08)",
                                     border: "1px solid rgba(16,185,129,0.2)",
@@ -1186,6 +1591,115 @@ export function ParcelResultsPanel({
                         )}
                     </div>
 
+
+
+                    <div style={{ display: "flex", gap: 8, width: "100%", marginBottom: 16, alignItems: "center" }}>
+                        <button
+                            className="prp-btn-primary"
+                            onClick={() => handleSave()}
+                            disabled={!projectName.trim() || saveState === "saving"}
+                            style={{
+                                flex: 1.2,
+                                height: "42px",
+                                padding: 0,
+                                margin: 0,
+                                boxSizing: "border-box",
+                                fontSize: "12.5px",
+                                fontWeight: 700,
+                                background: "linear-gradient(135deg,#0369a1,#0284c7)",
+                                border: "1.5px solid transparent",
+                                borderRadius: "14px",
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "center",
+                                gap: "4px",
+                                cursor: !projectName.trim() || saveState === "saving" ? "not-allowed" : "pointer",
+                                opacity: !projectName.trim() || saveState === "saving" ? 0.6 : 1,
+                                color: "#fff",
+                                transition: "all 0.2s",
+                                boxShadow: "0 4px 10px rgba(2,132,199,0.2)"
+                            }}
+                        >
+                            {saveState === "saving" ? (
+                                <><span className="s1-spin" style={{ width: 14, height: 14, border: "2px solid rgba(255,255,255,0.3)", borderTopColor: "#fff" }} /> บันทึก...</>
+                            ) : saveState === "done" ? (
+                                <><i className="bi bi-check-circle-fill" /> บันทึกแล้ว</>
+                            ) : (
+                                <><i className="bi bi-save" /> บันทึกข้อมูล</>
+                            )}
+                        </button>
+                        <button
+                            className="prp-btn-ghost"
+                            onClick={() => onStepChange(2)}
+                            style={{
+                                flex: 1,
+                                height: "42px",
+                                padding: 0,
+                                margin: 0,
+                                boxSizing: "border-box",
+                                fontSize: "12.5px",
+                                fontWeight: 700,
+                                color: "#047857",
+                                cursor: "pointer",
+                                background: "rgba(16, 185, 129, 0.08)",
+                                border: "1.5px solid rgba(16, 185, 129, 0.25)",
+                                borderRadius: "14px",
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "center",
+                                gap: "4px",
+                                transition: "all 0.2s",
+                                outline: "none",
+                                boxShadow: "0 2px 5px rgba(16, 185, 129, 0.05)"
+                            }}
+                            onMouseOver={(e) => {
+                                e.currentTarget.style.background = "rgba(16, 185, 129, 0.16)";
+                                e.currentTarget.style.borderColor = "rgba(16, 185, 129, 0.45)";
+                            }}
+                            onMouseOut={(e) => {
+                                e.currentTarget.style.background = "rgba(16, 185, 129, 0.08)";
+                                e.currentTarget.style.borderColor = "rgba(16, 185, 129, 0.25)";
+                            }}
+                        >
+                            <i className="bi bi-arrow-left-short" style={{ fontSize: "16px", fontWeight: "bold" }} /> แก้ไขข้อมูล
+                        </button>
+                        <button
+                            className="prp-btn-text"
+                            onClick={onReset}
+                            style={{
+                                flex: 1,
+                                height: "42px",
+                                padding: 0,
+                                margin: 0,
+                                boxSizing: "border-box",
+                                fontSize: "12.5px",
+                                fontWeight: 700,
+                                color: "#dc3545",
+                                cursor: "pointer",
+                                background: "rgba(220, 53, 69, 0.08)",
+                                border: "1.5px solid rgba(220, 53, 69, 0.25)",
+                                borderRadius: "14px",
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "center",
+                                gap: "4px",
+                                transition: "all 0.2s",
+                                outline: "none",
+                                textDecoration: "none",
+                                boxShadow: "0 2px 5px rgba(220, 53, 69, 0.05)"
+                            }}
+                            onMouseOver={(e) => {
+                                e.currentTarget.style.background = "rgba(220, 53, 69, 0.16)";
+                                e.currentTarget.style.borderColor = "rgba(220, 53, 69, 0.45)";
+                            }}
+                            onMouseOut={(e) => {
+                                e.currentTarget.style.background = "rgba(220, 53, 69, 0.08)";
+                                e.currentTarget.style.borderColor = "rgba(220, 53, 69, 0.25)";
+                            }}
+                        >
+                            <i className="bi bi-x-circle" style={{ fontSize: "12px" }} /> ไม่บันทึก
+                        </button>
+                    </div>
                     {isTotal ? (
                         <>
                             {/* Total summary */}
@@ -1254,11 +1768,44 @@ export function ParcelResultsPanel({
                                     <div><strong>พื้นที่รวม:</strong> {totalArea.toFixed(2)} ไร่</div>
                                     <div style={{ marginTop: 8 }}><strong>รายละเอียดแปลง:</strong></div>
                                     <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 4 }}>
+                                        {plots.length > 1 && (
+                                            <div
+                                                onClick={() => onMapPlotSelected?.("total")}
+                                                style={{
+                                                    padding: "10px 12px",
+                                                    background: isTotal ? "rgba(16,185,129,0.06)" : "#fff",
+                                                    borderRadius: 8,
+                                                    border: isTotal ? "2px solid #10b981" : "1px solid rgba(0,0,0,0.06)",
+                                                    cursor: "pointer",
+                                                    transition: "all 0.2s",
+                                                    display: "flex",
+                                                    alignItems: "center",
+                                                    gap: 10
+                                                }}
+                                            >
+                                                <div style={{
+                                                    width: 24,
+                                                    height: 24,
+                                                    borderRadius: 6,
+                                                    background: isTotal ? "#10b981" : "#f1f5f9",
+                                                    display: "flex",
+                                                    alignItems: "center",
+                                                    justifyContent: "center",
+                                                    color: isTotal ? "#fff" : "#64748b"
+                                                }}>
+                                                    <i className="bi bi-pie-chart-fill" style={{ fontSize: 12 }} />
+                                                </div>
+                                                <div style={{ fontWeight: 700, color: isTotal ? "#047857" : "#334155", fontSize: 12 }}>
+                                                    ภาพรวมคาร์บอนรวมทุกแปลง ({totalArea.toFixed(2)} ไร่)
+                                                </div>
+                                            </div>
+                                        )}
+
                                         {plots.map((p, i) => {
-                                            if (!isTotal && selectedMapPlotIndex !== i) return null;
                                             const f = plotForms[i];
                                             const crInfo = carbonResults[i];
                                             if (!f || !crInfo) return null;
+                                            const isSel = selectedMapPlotIndex === i;
                                             return (
                                                 <div
                                                     key={i}
@@ -1268,20 +1815,45 @@ export function ParcelResultsPanel({
                                                             onMapPlotSelected?.(i);
                                                         }
                                                     }}
-                                                    style={{ padding: "8px 10px", background: "#fff", borderRadius: 8, border: "1px solid rgba(0,0,0,0.05)", cursor: "pointer" }}
+                                                    style={{
+                                                        padding: "10px 12px",
+                                                        background: isSel ? "rgba(16,185,129,0.06)" : "#fff",
+                                                        borderRadius: 8,
+                                                        border: isSel ? "2px solid #10b981" : "1px solid rgba(0,0,0,0.06)",
+                                                        cursor: "pointer",
+                                                        transition: "all 0.2s"
+                                                    }}
                                                 >
-                                                    <div style={{ fontWeight: 600, color: "#0f172a", marginBottom: 4 }}>แปลงที่ {i + 1} ({p.areaRai.toFixed(2)} ไร่)</div>
-                                                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 4, fontSize: 11, color: "#64748b" }}>
-                                                        <div>• ปีที่ปลูก: พ.ศ. {crInfo.plantYearBE}</div>
-                                                        <div>• พันธุ์ยาง: {crInfo.variety}</div>
-                                                        <div>• จำนวนต้น: {crInfo.trees} ต้น</div>
-                                                        <div>• ระยะปลูก: {crInfo.spacing} ม.</div>
+                                                    <div style={{ fontWeight: 700, color: isSel ? "#047857" : "#0f172a", marginBottom: 6, display: "flex", alignItems: "center", gap: 6 }}>
+                                                        <i className="bi bi-geo-alt-fill" style={{ color: isSel ? "#10b981" : "#64748b" }} />
+                                                        แปลงที่ {i + 1} ({p.areaRai.toFixed(2)} ไร่)
                                                     </div>
-                                                    {f.luMockData && Object.keys(f.luMockData).length > 0 && (
-                                                        <div style={{ marginTop: 4, fontSize: 11, color: "#10b981", display: "flex", flexWrap: "wrap", gap: 6 }}>
-                                                            {Object.entries(f.luMockData).map(([k, v]) => (
-                                                                <span key={k}>{k}: {v.pct}%</span>
-                                                            ))}
+                                                    <div style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 11, color: "#64748b" }}>
+                                                        <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                                                            <div>• ปีที่ปลูกที่ใช้ประมวลผล: <strong>พ.ศ. {crInfo.plantYearBE}</strong></div>
+                                                        </div>
+                                                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 4, marginTop: 2 }}>
+                                                            <div>• พันธุ์ยาง: {crInfo.variety}</div>
+                                                            <div>• จำนวนต้น: {crInfo.trees} ต้น</div>
+                                                            <div>• ระยะปลูก: {crInfo.spacing} ม.</div>
+                                                        </div>
+                                                    </div>
+                                                    {crInfo.selectedAreaRai !== undefined && (
+                                                        <div style={{ marginTop: 6, paddingTop: 6, borderTop: "1px dashed rgba(16,185,129,0.15)", fontSize: 11 }}>
+                                                            <div style={{ display: "flex", justifyContent: "space-between", color: "#0284c7", fontWeight: 700, marginBottom: 4 }}>
+                                                                <span>• พื้นที่ที่เลือกทั้งหมด:</span>
+                                                                <span>{crInfo.selectedAreaRai.toFixed(2)} ไร่</span>
+                                                            </div>
+                                                            {crInfo.luBreakdown && Object.keys(crInfo.luBreakdown).length > 0 && (
+                                                                <div style={{ display: "flex", flexDirection: "column", gap: 2, paddingLeft: 8 }}>
+                                                                    {Object.entries(crInfo.luBreakdown).map(([cls, info]) => (
+                                                                        <div key={cls} style={{ display: "flex", justifyContent: "space-between", color: "#059669", fontWeight: 600 }}>
+                                                                            <span>↳ {info.desc}:</span>
+                                                                            <span>{info.rai.toFixed(2)} ไร่ ({info.pct}%)</span>
+                                                                        </div>
+                                                                    ))}
+                                                                </div>
+                                                            )}
                                                         </div>
                                                     )}
                                                 </div>
@@ -1293,24 +1865,6 @@ export function ParcelResultsPanel({
                         )}
                     </div>
 
-                    <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 12 }}>
-                        <button
-                            className="prp-btn-primary"
-                            onClick={() => handleSave()}
-                            disabled={!projectName.trim() || saveState === "saving"}
-                            style={{ background: "linear-gradient(135deg,#0369a1,#0284c7)" }}
-                        >
-                            {saveState === "saving" ? (
-                                <><span className="s1-spin" style={{ width: 14, height: 14, border: "2px solid rgba(255,255,255,0.3)", borderTopColor: "#fff", marginRight: 8 }} /> กำลังบันทึก...</>
-                            ) : saveState === "done" ? (
-                                <><i className="bi bi-check-circle-fill me-2" />บันทึกสำเร็จ!</>
-                            ) : (
-                                <><i className="bi bi-floppy-disk me-2" />บันทึกผลลงฐานข้อมูล</>
-                            )}
-                        </button>
-                        <button className="prp-btn-ghost" onClick={() => onStepChange(2)}>← กลับแก้ไขข้อมูล</button>
-                        <button className="prp-btn-text" onClick={onReset}><i className="bi bi-x-circle me-1" />ไม่บันทึก</button>
-                    </div>
                 </div>
             );
         }

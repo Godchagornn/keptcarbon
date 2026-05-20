@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, Suspense } from "react";
 import maplibregl, { type Map as MLMap } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import JSZip from "jszip";
@@ -17,6 +17,7 @@ import {
 } from "@/lib/map-utils";
 import { getPlantationInfo } from "@/lib/carbon-api";
 import { ParcelResultsPanel } from "@/app/components/organisms";
+import { useSearchParams } from "next/navigation";
 
 type Tab = "draw" | "shp";
 type NdviStatus = number | null | "loading" | "error";
@@ -28,7 +29,7 @@ type BfastStatus = {
   ndviLatest?: number | null;
 };
 
-export default function MapDrawPage() {
+function MapDrawContent() {
   const { user } = useAuth();
 
   // Toggle body class for full-screen layout
@@ -42,6 +43,8 @@ export default function MapDrawPage() {
   const mapRef = useRef<MLMap | null>(null);
   const mapLoadedRef = useRef(false);
   const searchAbortRef = useRef<AbortController | null>(null);
+  
+  const searchParams = useSearchParams();
 
   // Draw state
   const [drawing, setDrawing] = useState(false);
@@ -92,9 +95,46 @@ export default function MapDrawPage() {
   // Drawn boundary geometry (set when search is confirmed)
   const [drawnGeometry, setDrawnGeometry] = useState<GeoJSON.Geometry | null>(null);
   const [selectedPlotIndex, setSelectedPlotIndex] = useState<number | "total">("total");
+  const [projectType, setProjectType] = useState<"replanting" | "existing" | null>(null);
 
   // Multi-parcel support
   const [drawnParcels, setDrawnParcels] = useState<GeoJSON.Feature[]>([]);
+  const drawnParcelsRef = useRef<GeoJSON.Feature[]>([]);
+  
+  useEffect(() => {
+    drawnParcelsRef.current = drawnParcels;
+    const map = mapRef.current;
+    if (map && mapLoadedRef.current) {
+      // Sync plot layer (fills and outlines)
+      const plotSrc = map.getSource("plot") as maplibregl.GeoJSONSource | undefined;
+      if (plotSrc) {
+        plotSrc.setData({
+          type: "FeatureCollection",
+          features: drawnParcels,
+        });
+      }
+
+      // Sync plot vertices (nodes)
+      const vertFeatures: GeoJSON.Feature[] = [];
+      drawnParcels.forEach((parcel, pIdx) => {
+        if (parcel.geometry.type === "Polygon") {
+          const coords = parcel.geometry.coordinates[0];
+          coords.slice(0, -1).forEach((c, vIdx) => {
+            vertFeatures.push({
+              type: "Feature",
+              geometry: { type: "Point", coordinates: c as [number, number] },
+              properties: { pIdx, vIdx }
+            });
+          });
+        }
+      });
+      const src = map.getSource("plot-verts") as maplibregl.GeoJSONSource | undefined;
+      if (src) {
+        src.setData({ type: "FeatureCollection", features: vertFeatures });
+      }
+    }
+  }, [drawnParcels]);
+
   const totalDrawnArea = useMemo(() => {
     return drawnParcels.reduce((acc, p) => {
       if (p.geometry.type === "Polygon") {
@@ -104,44 +144,372 @@ export default function MapDrawPage() {
     }, 0);
   }, [drawnParcels]);
 
-  const runPlantationInfoRef = useRef<() => void>(() => { });
+  const runPlantationInfoRef = useRef<(projType?: string | null) => void>(() => { });
   const needsPlantationSearchRef = useRef(false);
+
+  // Editable polygon logic
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !mapLoaded) return;
+
+    let activePIdx = -1;
+    let activeVIdx = -1;
+
+    function onVertsTouchStart(e: maplibregl.MapTouchEvent) {
+      const map = mapRef.current;
+      if (!map || drawingRef.current) return;
+      e.preventDefault();
+      const features = map.queryRenderedFeatures(e.point, { layers: ['plot-verts-l'] });
+      if (!features.length) return;
+      activePIdx = features[0].properties.pIdx;
+      activeVIdx = features[0].properties.vIdx;
+      
+      map.dragPan.disable();
+      
+      map.on('touchmove', onVertsTouchMove);
+      map.on('touchend', onVertsTouchEnd);
+    }
+
+    function onVertsTouchMove(e: maplibregl.MapTouchEvent) {
+      const map = mapRef.current;
+      if (!map || activePIdx === -1) return;
+      if (!e.lngLats || !e.lngLats.length) return;
+      const parcels = [...drawnParcelsRef.current];
+      const parcel = parcels[activePIdx];
+      if (parcel && parcel.geometry.type === "Polygon") {
+        const coords = [...parcel.geometry.coordinates[0]];
+        const touch = e.lngLats[0];
+        coords[activeVIdx] = [touch.lng, touch.lat];
+        if (activeVIdx === 0) {
+           coords[coords.length - 1] = [touch.lng, touch.lat];
+        }
+        parcel.geometry.coordinates[0] = coords;
+        
+        const srcPlot = map.getSource("plot") as maplibregl.GeoJSONSource | undefined;
+        if (srcPlot) {
+           srcPlot.setData({ type: "FeatureCollection", features: parcels });
+        }
+        
+        const vertFeatures: GeoJSON.Feature[] = [];
+        parcels.forEach((p, pIdx) => {
+          if (p.geometry.type === "Polygon") {
+            const cArr = p.geometry.coordinates[0];
+            cArr.slice(0, -1).forEach((c, vIdx) => {
+              vertFeatures.push({
+                type: "Feature",
+                geometry: { type: "Point", coordinates: c as [number, number] },
+                properties: { pIdx, vIdx }
+              });
+            });
+          }
+        });
+        const srcVerts = map.getSource("plot-verts") as maplibregl.GeoJSONSource | undefined;
+        if (srcVerts) {
+           srcVerts.setData({ type: "FeatureCollection", features: vertFeatures });
+        }
+      }
+    }
+
+    function onVertsTouchEnd() {
+      const map = mapRef.current;
+      if (!map || activePIdx === -1) return;
+      map.off('touchmove', onVertsTouchMove);
+      map.off('touchend', onVertsTouchEnd);
+      
+      map.dragPan.enable();
+      
+      const parcels = [...drawnParcelsRef.current];
+      const parcel = parcels[activePIdx];
+      if (parcel && parcel.geometry.type === "Polygon") {
+        parcel.properties = parcel.properties || {};
+        parcel.properties.rai = polygonAreaM2(parcel.geometry.coordinates[0] as LngLat[]) / 1600;
+      }
+      setDrawnParcels(parcels);
+      needsPlantationSearchRef.current = true;
+      if (runPlantationInfoRef.current) runPlantationInfoRef.current();
+      activePIdx = -1;
+    }
+
+    const onVertsDown = (e: maplibregl.MapMouseEvent) => {
+      if (drawingRef.current) return;
+
+      // Detect Right-Click (button === 2) -> Delete Node
+      if (e.originalEvent && e.originalEvent.button === 2) {
+        e.preventDefault();
+        const features = map.queryRenderedFeatures(e.point, { layers: ['plot-verts-l'] });
+        if (!features.length) return;
+        const pIdx = features[0].properties.pIdx;
+        const vIdx = features[0].properties.vIdx;
+
+        const parcels = [...drawnParcelsRef.current];
+        const parcel = parcels[pIdx];
+        if (parcel && parcel.geometry.type === "Polygon") {
+          const coords = parcel.geometry.coordinates[0];
+          if (coords.length <= 4) {
+            setToast("แปลงที่ดินต้องมีอย่างน้อย 3 จุด");
+            return;
+          }
+
+          const activeVerts = coords.slice(0, -1);
+          activeVerts.splice(vIdx, 1);
+          const newCoords = [...activeVerts, activeVerts[0]];
+
+          parcel.geometry.coordinates[0] = newCoords;
+          parcel.properties = parcel.properties || {};
+          parcel.properties.rai = polygonAreaM2(newCoords as LngLat[]) / 1600;
+
+          setDrawnParcels(parcels);
+          needsPlantationSearchRef.current = true;
+          if (runPlantationInfoRef.current) runPlantationInfoRef.current();
+        }
+        return;
+      }
+
+      // Only allow Left-Click (button === 0) for dragging
+      if (e.originalEvent && e.originalEvent.button !== 0) return;
+
+      e.preventDefault();
+      const features = map.queryRenderedFeatures(e.point, { layers: ['plot-verts-l'] });
+      if (!features.length) return;
+      activePIdx = features[0].properties.pIdx;
+      activeVIdx = features[0].properties.vIdx;
+      map.getCanvas().style.cursor = 'grabbing';
+      map.on('mousemove', onVertsMove);
+      map.on('mouseup', onVertsUp);
+    };
+
+    const onVertsMove = (e: maplibregl.MapMouseEvent) => {
+      if (activePIdx === -1) return;
+      const parcels = [...drawnParcelsRef.current];
+      const parcel = parcels[activePIdx];
+      if (parcel && parcel.geometry.type === "Polygon") {
+        const coords = [...parcel.geometry.coordinates[0]];
+        coords[activeVIdx] = [e.lngLat.lng, e.lngLat.lat];
+        if (activeVIdx === 0) {
+           coords[coords.length - 1] = [e.lngLat.lng, e.lngLat.lat];
+        }
+        parcel.geometry.coordinates[0] = coords;
+        
+        const srcPlot = map.getSource("plot") as maplibregl.GeoJSONSource | undefined;
+        if (srcPlot) {
+           srcPlot.setData({ type: "FeatureCollection", features: parcels });
+        }
+        
+        const vertFeatures: GeoJSON.Feature[] = [];
+        parcels.forEach((p, pIdx) => {
+          if (p.geometry.type === "Polygon") {
+            const cArr = p.geometry.coordinates[0];
+            cArr.slice(0, -1).forEach((c, vIdx) => {
+              vertFeatures.push({
+                type: "Feature",
+                geometry: { type: "Point", coordinates: c as [number, number] },
+                properties: { pIdx, vIdx }
+              });
+            });
+          }
+        });
+        const srcVerts = map.getSource("plot-verts") as maplibregl.GeoJSONSource | undefined;
+        if (srcVerts) {
+           srcVerts.setData({ type: "FeatureCollection", features: vertFeatures });
+        }
+      }
+    };
+
+    const onVertsUp = () => {
+      if (activePIdx !== -1) {
+        map.getCanvas().style.cursor = '';
+        map.off('mousemove', onVertsMove);
+        map.off('mouseup', onVertsUp);
+        const parcels = [...drawnParcelsRef.current];
+        const parcel = parcels[activePIdx];
+        if (parcel && parcel.geometry.type === "Polygon") {
+          parcel.properties = parcel.properties || {};
+          parcel.properties.rai = polygonAreaM2(parcel.geometry.coordinates[0] as LngLat[]) / 1600;
+        }
+        setDrawnParcels(parcels);
+        needsPlantationSearchRef.current = true;
+        if (runPlantationInfoRef.current) runPlantationInfoRef.current();
+        activePIdx = -1;
+      }
+    };
+
+    const onLineDown = (e: maplibregl.MapMouseEvent) => {
+      if (drawingRef.current) return;
+      
+      // If clicked on a vertex, ignore to let onVertsDown handle it
+      const vertsHit = map.queryRenderedFeatures(e.point, { layers: ['plot-verts-l'] });
+      if (vertsHit.length > 0) return;
+
+      // Only handle Left-Click for adding + dragging
+      if (e.originalEvent && e.originalEvent.button !== 0) return;
+
+      const clickPt = [e.lngLat.lng, e.lngLat.lat];
+      let minD = Infinity;
+      let bestPIdx = -1;
+      let bestSIdx = -1;
+      const p = map.project(clickPt as [number, number]);
+
+      drawnParcelsRef.current.forEach((parcel, pIdx) => {
+        if (parcel.geometry.type === "Polygon") {
+          const coords = parcel.geometry.coordinates[0];
+          for (let i = 0; i < coords.length - 1; i++) {
+             const p1 = map.project(coords[i] as [number, number]);
+             const p2 = map.project(coords[i+1] as [number, number]);
+             const l2 = (p1.x - p2.x)**2 + (p1.y - p2.y)**2;
+             let t = 0;
+             if (l2 !== 0) {
+                 t = Math.max(0, Math.min(1, ((p.x - p1.x)*(p2.x - p1.x) + (p.y - p1.y)*(p2.y - p1.y)) / l2));
+             }
+             const proj = { x: p1.x + t*(p2.x - p1.x), y: p1.y + t*(p2.y - p1.y) };
+             const d = Math.hypot(p.x - proj.x, p.y - proj.y);
+             if (d < minD) {
+               minD = d;
+               bestPIdx = pIdx;
+               bestSIdx = i;
+             }
+          }
+        }
+      });
+
+      if (minD < 15 && bestPIdx !== -1) {
+         e.preventDefault();
+         const newParcels = [...drawnParcelsRef.current];
+         const parcel = { ...newParcels[bestPIdx] };
+         if (parcel.geometry.type === "Polygon") {
+            const coords = [...parcel.geometry.coordinates[0]];
+            coords.splice(bestSIdx + 1, 0, clickPt);
+            parcel.geometry.coordinates[0] = coords;
+            parcel.properties = parcel.properties || {};
+            parcel.properties.rai = polygonAreaM2(coords as LngLat[]) / 1600;
+            newParcels[bestPIdx] = parcel;
+
+            setDrawnParcels(newParcels);
+            drawnParcelsRef.current = newParcels;
+
+            // Set index of the new vertex for immediate dragging!
+            activePIdx = bestPIdx;
+            activeVIdx = bestSIdx + 1;
+
+            map.getCanvas().style.cursor = 'grabbing';
+            map.on('mousemove', onVertsMove);
+            map.on('mouseup', onVertsUp);
+         }
+      }
+    };
+
+    const onVertsContextMenu = (e: maplibregl.MapMouseEvent) => {
+      if (drawingRef.current) return;
+      e.preventDefault();
+      const features = map.queryRenderedFeatures(e.point, { layers: ['plot-verts-l'] });
+      if (!features.length) return;
+      const pIdx = features[0].properties.pIdx;
+      const vIdx = features[0].properties.vIdx;
+
+      const parcels = [...drawnParcelsRef.current];
+      const parcel = parcels[pIdx];
+      if (parcel && parcel.geometry.type === "Polygon") {
+        const coords = parcel.geometry.coordinates[0];
+        if (coords.length <= 4) {
+          setToast("แปลงที่ดินต้องมีอย่างน้อย 3 จุด");
+          return;
+        }
+
+        const activeVerts = coords.slice(0, -1);
+        activeVerts.splice(vIdx, 1);
+        const newCoords = [...activeVerts, activeVerts[0]];
+
+        parcel.geometry.coordinates[0] = newCoords;
+        parcel.properties = parcel.properties || {};
+        parcel.properties.rai = polygonAreaM2(newCoords as LngLat[]) / 1600;
+
+        setDrawnParcels(parcels);
+        needsPlantationSearchRef.current = true;
+        if (runPlantationInfoRef.current) runPlantationInfoRef.current();
+        setToast("ลบจุด Node สำเร็จ");
+      }
+    };
+
+    const mouseEnterVerts = () => { if (!drawingRef.current) map.getCanvas().style.cursor = 'move'; };
+    const mouseLeaveVerts = () => { if (!drawingRef.current) map.getCanvas().style.cursor = ''; };
+    const mouseEnterLine = () => { if (!drawingRef.current) map.getCanvas().style.cursor = 'crosshair'; };
+    const mouseLeaveLine = () => { if (!drawingRef.current) map.getCanvas().style.cursor = ''; };
+
+    map.on('mousedown', 'plot-verts-l', onVertsDown);
+    map.on('touchstart', 'plot-verts-l', onVertsTouchStart);
+    map.on('contextmenu', 'plot-verts-l', onVertsContextMenu);
+    map.on('mouseenter', 'plot-verts-l', mouseEnterVerts);
+    map.on('mouseleave', 'plot-verts-l', mouseLeaveVerts);
+ 
+    map.on('mousedown', 'plot-line', onLineDown);
+    map.on('mouseenter', 'plot-line', mouseEnterLine);
+    map.on('mouseleave', 'plot-line', mouseLeaveLine);
+ 
+    return () => {
+      map.dragPan.enable();
+      map.off('touchmove', onVertsTouchMove);
+      map.off('touchend', onVertsTouchEnd);
+
+      map.off('mousedown', 'plot-verts-l', onVertsDown);
+      map.off('touchstart', 'plot-verts-l', onVertsTouchStart);
+      map.off('contextmenu', 'plot-verts-l', onVertsContextMenu);
+      map.off('mouseenter', 'plot-verts-l', mouseEnterVerts);
+      map.off('mouseleave', 'plot-verts-l', mouseLeaveVerts);
+      map.off('mousedown', 'plot-line', onLineDown);
+      map.off('mouseenter', 'plot-line', mouseEnterLine);
+      map.off('mouseleave', 'plot-line', mouseLeaveLine);
+    };
+  }, [mapLoaded]);
 
   // Tracks which lu_class values are checked in the panel (for map highlighting)
   const [visibleLuClasses, setVisibleLuClasses] = useState<Record<string, boolean>>({ A: true, A302: true });
 
   const handleLandUseChange = useCallback((checked: Record<string, boolean>) => {
     setVisibleLuClasses(checked);
-    const map = mapRef.current;
-    if (!map || !mapLoadedRef.current) return;
-    // All checked lu classes → orange; unchecked → gray
-    const checkedClasses = Object.entries(checked)
-      .filter(([, on]) => on)
-      .map(([cls]) => cls);
-    // Build match expression: for each known lu_class, orange if checked, gray if not
-    const allKnown = ["A302", "A303", "A304", "A401", "A403", "A204", "A205", "A300", "F", "W", "U", "M"];
-    const colorExpr: unknown[] = ["match", ["get", "lu_class"]];
-    const opacityExpr: unknown[] = ["match", ["get", "lu_class"]];
-    allKnown.forEach(cls => {
-      const isChecked = checkedClasses.some(c => cls.startsWith(c) || c.startsWith(cls) || c === cls);
-      colorExpr.push(cls, isChecked ? "#ff9100" : "#94a3b8");
-      opacityExpr.push(cls, isChecked ? 0.65 : 0.18);
-    });
-    colorExpr.push("#ff9100"); // default fallback = orange (checked)
-    opacityExpr.push(0.65);
-    map.setPaintProperty("matched-parcels-fill", "fill-color", colorExpr as maplibregl.ExpressionSpecification);
-    map.setPaintProperty("matched-parcels-fill", "fill-opacity", opacityExpr as maplibregl.ExpressionSpecification);
-    map.setPaintProperty("matched-parcels-line", "line-color",
-      (checkedClasses.length > 0 ? "#e65c00" : "#94a3b8") as unknown as maplibregl.ExpressionSpecification
-    );
+    // Colors are now statically applied in addLayer, so no style updates needed here.
   }, []);
 
+  // Map Effect: Grey out unticked Land Use features instead of hiding them
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !mapLoadedRef.current) return;
+    
+    const checkedClasses = Object.entries(visibleLuClasses)
+      .filter(([, on]) => on)
+      .map(([cls]) => cls);
+
+    // Remove any previous filter so all polygons render
+    map.setFilter("matched-parcels-fill", null);
+    map.setFilter("matched-parcels-line", null);
+
+    if (checkedClasses.length === 0) {
+      map.setPaintProperty("matched-parcels-fill", "fill-color", "#94a3b8");
+      map.setPaintProperty("matched-parcels-fill", "fill-opacity", 0.2);
+      map.setPaintProperty("matched-parcels-line", "line-color", "#94a3b8");
+    } else {
+      const colorMap = [
+        "case",
+        ["==", ["slice", ["to-string", ["coalesce", ["get", "lu_class"], ""]], 0, 1], "U"], "#ef4444",
+        ["==", ["slice", ["to-string", ["coalesce", ["get", "lu_class"], ""]], 0, 1], "A"], "#84cc16",
+        ["==", ["slice", ["to-string", ["coalesce", ["get", "lu_class"], ""]], 0, 1], "F"], "#166534",
+        ["==", ["slice", ["to-string", ["coalesce", ["get", "lu_class"], ""]], 0, 1], "W"], "#3b82f6",
+        ["==", ["slice", ["to-string", ["coalesce", ["get", "lu_class"], ""]], 0, 1], "M"], "#9ca3af",
+        "#ff9100"
+      ];
+      
+      const isCheckedExpr = ["match", ["coalesce", ["get", "lu_class"], ""], checkedClasses, true, false];
+      
+      map.setPaintProperty("matched-parcels-fill", "fill-color", ["case", isCheckedExpr, colorMap, "#94a3b8"] as unknown as maplibregl.ExpressionSpecification);
+      map.setPaintProperty("matched-parcels-fill", "fill-opacity", ["case", isCheckedExpr, 0.65, 0.35] as unknown as maplibregl.ExpressionSpecification);
+      map.setPaintProperty("matched-parcels-line", "line-color", ["case", isCheckedExpr, "#64748b", "#94a3b8"] as unknown as maplibregl.ExpressionSpecification);
+    }
+  }, [visibleLuClasses, parcelFeatures]);
 
   // ===== MAP INIT =====
   useEffect(() => {
     if (!mapContainerRef.current || mapRef.current) return;
     const map = new maplibregl.Map({
       container: mapContainerRef.current,
+      pixelRatio: Math.min(typeof window !== "undefined" ? window.devicePixelRatio || 1 : 1, 2),
       style: {
         version: 8,
         glyphs: "https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf",
@@ -151,7 +519,7 @@ export default function MapDrawPage() {
             tiles: ["https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"],
             tileSize: 256,
             minzoom: 1,
-            maxzoom: 17,
+            maxzoom: 18,
             attribution: "",
           },
           street: {
@@ -167,7 +535,7 @@ export default function MapDrawPage() {
             tiles: ["https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}"],
             tileSize: 256,
             minzoom: 1,
-            maxzoom: 17,
+            maxzoom: 19,
             attribution: "",
           },
         },
@@ -181,6 +549,7 @@ export default function MapDrawPage() {
       center: [101.258, 13.5],
       zoom: 2,
       minZoom: 1,
+      maxZoom: 19,
       pitch: 0,
       bearing: 0,
       maxPitch: 0,
@@ -241,6 +610,7 @@ export default function MapDrawPage() {
         id: "draw-line-l",
         type: "line",
         source: "draw-line",
+        layout: { "line-join": "round", "line-cap": "round" },
         paint: { "line-color": "#3b82f6", "line-width": 2, "line-dasharray": [3, 2] },
       });
       map.addSource("draw-fill", { type: "geojson", data: emptyFC() });
@@ -273,22 +643,36 @@ export default function MapDrawPage() {
         id: "plot-line",
         type: "line",
         source: "plot",
+        layout: { "line-join": "round", "line-cap": "round" },
         paint: { "line-color": "#3b82f6", "line-width": 2.5 },
       });
 
+
+
       map.addSource("matched-parcels", { type: "geojson", data: emptyFC() });
-      // Initial colours: A302 orange (selected by default), everything else gray
       map.addLayer({
         id: "matched-parcels-fill",
         type: "fill",
         source: "matched-parcels",
-        paint: { "fill-color": "#ff9100", "fill-opacity": 0.65 },
+        paint: {
+          "fill-color": [
+            "case",
+            ["==", ["slice", ["to-string", ["coalesce", ["get", "lu_class"], ""]], 0, 1], "U"], "#ef4444",
+            ["==", ["slice", ["to-string", ["coalesce", ["get", "lu_class"], ""]], 0, 1], "A"], "#84cc16",
+            ["==", ["slice", ["to-string", ["coalesce", ["get", "lu_class"], ""]], 0, 1], "F"], "#166534",
+            ["==", ["slice", ["to-string", ["coalesce", ["get", "lu_class"], ""]], 0, 1], "W"], "#3b82f6",
+            ["==", ["slice", ["to-string", ["coalesce", ["get", "lu_class"], ""]], 0, 1], "M"], "#9ca3af",
+            "#ff9100" // default fallback
+          ],
+          "fill-opacity": 0.65
+        },
       });
       map.addLayer({
         id: "matched-parcels-line",
         type: "line",
         source: "matched-parcels",
-        paint: { "line-color": "#e65c00", "line-width": 2.2 },
+        layout: { "line-join": "round", "line-cap": "round" },
+        paint: { "line-color": "#64748b", "line-width": 2.2 },
       });
       map.addLayer({
         id: "matched-parcels-label",
@@ -303,6 +687,19 @@ export default function MapDrawPage() {
           "text-color": "#ffffff",
           "text-halo-color": "#0f172a",
           "text-halo-width": 2,
+        },
+      });
+
+      map.addSource("plot-verts", { type: "geojson", data: emptyFC() });
+      map.addLayer({
+        id: "plot-verts-l",
+        type: "circle",
+        source: "plot-verts",
+        paint: {
+          "circle-color": "#ffffff",
+          "circle-radius": ["interpolate", ["linear"], ["zoom"], 4, 4, 14, 6],
+          "circle-stroke-color": "#3b82f6",
+          "circle-stroke-width": 2,
         },
       });
 
@@ -336,15 +733,26 @@ export default function MapDrawPage() {
     const map = mapRef.current;
     if (!map || !mapLoaded || !user) return;
 
-    const params = new URLSearchParams(window.location.search);
-    const projName = params.get("project");
-    const action = params.get("action");
+    let projName = searchParams?.get("project");
+    let action = searchParams?.get("action");
+    
+    // Fallback in case searchParams is not available
+    if (!projName && typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      projName = params.get("project") || projName;
+      action = params.get("action") || action;
+    }
 
-    if (projName && action === "calc" && parcelFeatures.length === 0) {
+    console.log("[AUTO-LOAD] Effect triggered", { projName, action, currentDrawnCount: drawnParcels.length });
+
+    if (projName && action === "calc" && drawnParcels.length === 0) {
       try {
         const key = `user_saved_plots_${user.id}`;
-        const stored = JSON.parse(localStorage.getItem(key) || "[]");
+        const storedRaw = localStorage.getItem(key);
+        console.log("[AUTO-LOAD] LocalStorage storedRaw:", storedRaw);
+        const stored = JSON.parse(storedRaw || "[]");
         const projectPlots = stored.filter((p: any) => p.name === projName);
+        console.log("[AUTO-LOAD] Filtered projectPlots for:", projName, projectPlots);
 
         if (projectPlots.length > 0) {
           const feats: GeoJSON.Feature[] = projectPlots.map((p: any, i: number) => ({
@@ -358,7 +766,10 @@ export default function MapDrawPage() {
             }
           }));
 
+          console.log("[AUTO-LOAD] Setting drawnParcels and parcelFeatures to feats:", feats);
+          setDrawnParcels(feats);
           setParcelFeatures(feats);
+          needsPlantationSearchRef.current = true;
           setSearchCount(feats.length);
           if (projectPlots[0].boundaryGeojson) {
             setDrawnGeometry(projectPlots[0].boundaryGeojson as GeoJSON.Geometry);
@@ -387,7 +798,7 @@ export default function MapDrawPage() {
         console.error("Failed to auto-load project for calculation", err);
       }
     }
-  }, [user, mapLoaded]);
+  }, [user, mapLoaded, searchParams]);
 
   // ===== DRAW HELPERS =====
   const previewDraw = useCallback(() => {
@@ -517,21 +928,14 @@ export default function MapDrawPage() {
 
     // Transition to step 2 automatically to fill form
     setCurrentStep(2);
+    setIsPanelOpen(true);
 
 
     // Reset current drawing vertices
     vertsRef.current = [];
     setVertCount(0);
 
-    if (!skipFit) {
-      // Fit to the new feature
-      const lngs = ring.map((p) => p[0]);
-      const lats = ring.map((p) => p[1]);
-      mapRef.current?.fitBounds(
-        [[Math.min(...lngs), Math.min(...lats)], [Math.max(...lngs), Math.max(...lats)]],
-        { padding: 60, duration: 600 }
-      );
-    }
+    // Removed duplicate camera bounce (fitBounds) here to allow the subsequent plantation-info fetch to animate smoothly just once!
   }, []);
 
   // Map click / dblclick / Escape handlers — keep refs in sync
@@ -603,8 +1007,8 @@ export default function MapDrawPage() {
     };
 
     const onContextMenu = (e: maplibregl.MapMouseEvent) => {
-      if (!drawingRef.current || vertsRef.current.length < 3) return;
       e.preventDefault();
+      if (!drawingRef.current || vertsRef.current.length < 3) return;
       finishDraw();
     };
 
@@ -637,7 +1041,11 @@ export default function MapDrawPage() {
   const startDrawFlow = () => {
     const map = mapRef.current;
     if (!map) return;
-    setIsPanelOpen(true);
+    if (isMobile()) {
+      setIsPanelOpen(false);
+    } else {
+      setIsPanelOpen(true);
+    }
     drawingRef.current = true;
     setDrawing(true);
     map.getCanvas().style.cursor = 'crosshair';
@@ -665,6 +1073,7 @@ export default function MapDrawPage() {
     setShpFile(null);
     setShpStatus(null);
     setDrawnParcels([]);
+    setProjectType(null);
     const map = mapRef.current;
     if (map && mapLoadedRef.current) {
       (map.getSource("draw-line") as maplibregl.GeoJSONSource | undefined)?.setData(emptyFC());
@@ -675,6 +1084,7 @@ export default function MapDrawPage() {
       map.getCanvas().style.cursor = "";
     }
     setCurrentStep(1);
+    setIsPanelOpen(true);
   };
 
   const deleteParcel = useCallback((idx: number) => {
@@ -687,7 +1097,15 @@ export default function MapDrawPage() {
           features: next,
         });
       }
-      if (next.length === 0) setHasGeom(false);
+      if (next.length === 0) {
+        setHasGeom(false);
+        setParcelFeatures([]);
+        if (map && mapLoadedRef.current) {
+          (map.getSource("matched-parcels") as maplibregl.GeoJSONSource)?.setData(emptyFC());
+        }
+      } else {
+        needsPlantationSearchRef.current = true;
+      }
       return next;
     });
   }, []);
@@ -697,6 +1115,7 @@ export default function MapDrawPage() {
     setDrawing(false);
     vertsRef.current = [];
     setStatus("ยกเลิกการวาด");
+    setIsPanelOpen(true);
     const map = mapRef.current;
     if (map) {
       map.getCanvas().style.cursor = '';
@@ -721,13 +1140,16 @@ export default function MapDrawPage() {
     }
   }, []);
 
-  const backToStep1 = useCallback(() => {
-    setCurrentStep(1);
-    setStatus("กลับไปหน้าวาดแปลง — สามารถวาดแปลงเพิ่มได้");
-  }, []);
 
   // ===== PLANTATION INFO (rubber area search via backend) =====
-  const runPlantationInfo = useCallback(async () => {
+  const runPlantationInfo = useCallback(async (projType?: string | null) => {
+    const activeProjType = projType !== undefined ? projType : projectType;
+    console.log("[runPlantationInfo] Called", {
+      drawnParcelsLength: drawnParcels.length,
+      totalDrawnArea,
+      drawnParcels,
+      activeProjType
+    });
     if (drawnParcels.length === 0) {
       setSearchErr("กรุณาวาดแปลงหรืออัปโหลด Shapefile ก่อน");
       return;
@@ -760,8 +1182,10 @@ export default function MapDrawPage() {
       const result = await getPlantationInfo({
         id: `search-${Date.now()}`,
         geometry: truncateCoords(combinedGeom),
+        project_type: activeProjType,
         output_crs: "EPSG:4326",
       });
+      console.log("[KeptCarbon] plantation-info response:", JSON.stringify(result, null, 2));
 
       // Show ALL lu_polygon features on map with lu_class for colour coding
       const allLU = result.lu_polygon ?? [];
@@ -825,7 +1249,12 @@ export default function MapDrawPage() {
     } finally {
       setSearchRunning(false);
     }
-  }, [drawnParcels, totalDrawnArea, handleLandUseChange, visibleLuClasses]);
+  }, [drawnParcels, totalDrawnArea, handleLandUseChange, visibleLuClasses, projectType]);
+
+  const handleProjectTypeChange = useCallback((type: "replanting" | "existing") => {
+    setProjectType(type);
+    runPlantationInfo(type);
+  }, [runPlantationInfo]);
 
   useEffect(() => {
     runPlantationInfoRef.current = runPlantationInfo;
@@ -833,11 +1262,17 @@ export default function MapDrawPage() {
 
   // Auto-trigger plantation info search when new parcels are drawn
   useEffect(() => {
+    console.log("[AUTO-TRIGGER] Effect evaluated", {
+      needsPlantationSearch: needsPlantationSearchRef.current,
+      drawnParcelsLength: drawnParcels.length,
+      drawnParcels
+    });
     if (needsPlantationSearchRef.current && drawnParcels.length > 0) {
       needsPlantationSearchRef.current = false;
-      runPlantationInfoRef.current();
+      console.log("[AUTO-TRIGGER] Launching runPlantationInfoRef.current()");
+      runPlantationInfoRef.current(projectType);
     }
-  }, [drawnParcels]);
+  }, [drawnParcels, projectType]);
 
   // Search is auto-triggered after finishDraw or loadShp
 
@@ -1121,6 +1556,107 @@ export default function MapDrawPage() {
           ))}
         </div>
 
+        {/* Mobile active drawing floating action bar */}
+        {drawing && isMobile() && (
+          <div
+            style={{
+              position: "fixed",
+              bottom: "20px",
+              left: "16px",
+              right: "70px",
+              zIndex: 100,
+              display: "flex",
+              flexDirection: "column",
+              gap: "8px",
+              background: "rgba(255, 255, 255, 0.96)",
+              backdropFilter: "blur(12px)",
+              WebkitBackdropFilter: "blur(12px)",
+              borderRadius: "14px",
+              padding: "12px",
+              boxShadow: "0 10px 25px -5px rgba(5, 150, 105, 0.15), 0 8px 16px -4px rgba(0, 0, 0, 0.05)",
+              border: "1px solid rgba(16, 185, 129, 0.25)",
+              boxSizing: "border-box",
+              animation: "mdsFabIn 0.3s cubic-bezier(0.34, 1.56, 0.64, 1)"
+            }}
+          >
+            {/* Draw info label */}
+            <div
+              style={{
+                fontSize: "11px",
+                color: "#064e3b",
+                textAlign: "center",
+                fontWeight: "700",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: "5px"
+              }}
+            >
+              <span
+                style={{
+                  display: "inline-block",
+                  width: "6px",
+                  height: "6px",
+                  borderRadius: "50%",
+                  background: "#10b981",
+                  boxShadow: "0 0 8px #10b981"
+                }}
+                className="mds-status-blink"
+              />
+              {vertCount === 0 ? "แตะบนแผนที่เพื่อเริ่มวาดแปลง" : `กำลังวาด: ${vertCount} จุด (ต้องการอย่างน้อย 3)`}
+            </div>
+
+            {/* Action buttons */}
+            <div style={{ display: "flex", gap: "8px", width: "100%" }}>
+              <button
+                onClick={() => finishDraw()}
+                disabled={vertCount < 3}
+                style={{
+                  flex: 1,
+                  height: "36px",
+                  borderRadius: "10px",
+                  boxSizing: "border-box",
+                  border: vertCount < 3 ? "1px solid #e2e8f0" : "1px solid transparent",
+                  background: vertCount < 3 ? "#f1f5f9" : "linear-gradient(135deg, #10b981, #059669)",
+                  color: vertCount < 3 ? "#94a3b8" : "#fff",
+                  fontSize: "12px",
+                  fontWeight: "700",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  padding: "0 8px",
+                  gap: "6px",
+                  transition: "all 0.2s"
+                }}
+              >
+                <i className="bi bi-check-circle-fill" /> เสร็จสิ้น
+              </button>
+              <button
+                onClick={clearDraw}
+                style={{
+                  flex: 1,
+                  height: "36px",
+                  borderRadius: "10px",
+                  boxSizing: "border-box",
+                  border: "1px solid transparent",
+                  background: "linear-gradient(135deg, #ef4444, #dc2626)",
+                  color: "#fff",
+                  fontSize: "12px",
+                  fontWeight: "700",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  padding: "0 8px",
+                  gap: "6px",
+                  transition: "all 0.2s"
+                }}
+              >
+                <i className="bi bi-x-circle-fill" /> ยกเลิก
+              </button>
+            </div>
+          </div>
+        )}
+
       </div>
 
       {/* ── Toggle Panel Button (when closed) ── */}
@@ -1131,6 +1667,7 @@ export default function MapDrawPage() {
           title="เปิดแผงเครื่องมือ"
         >
           <i className="bi bi-clipboard2-data-fill" />
+          <span className="mds-panel-toggle-text">กรอกข้อมูล</span>
         </button>
       )}
 
@@ -1259,6 +1796,20 @@ export default function MapDrawPage() {
                           <button className="mds-btn mds-btn-solid" onClick={startDrawFlow}>
                             <i className="bi bi-pencil" /> {drawnParcels.length > 0 ? "วาดแปลงเพิ่ม" : "เริ่มวาดแปลง"}
                           </button>
+                          {drawnParcels.length > 0 && (
+                            <button
+                              className="mds-btn"
+                              style={{
+                                background: "linear-gradient(135deg, #0d9488, #0f766e)",
+                                color: "#fff",
+                                border: "none",
+                                boxShadow: "0 4px 10px rgba(13,148,136,0.25)"
+                              }}
+                              onClick={() => setCurrentStep(2)}
+                            >
+                              <i className="bi bi-arrow-right-circle" /> กรอกข้อมูลแปลง (ขั้นตอนถัดไป)
+                            </button>
+                          )}
                         </div>
                       </>
                     )}
@@ -1304,9 +1855,24 @@ export default function MapDrawPage() {
                       <i className="bi bi-upload" /> โหลดและแสดงบนแผนที่
                     </button>
                     {hasGeom && !drawing && (
-                      <button className="mds-btn mds-btn-soft" onClick={clearDraw}>
-                        <i className="bi bi-trash" /> ล้างแปลง
-                      </button>
+                      <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+                        <button className="mds-btn mds-btn-soft" style={{ flex: 1 }} onClick={clearDraw}>
+                          <i className="bi bi-trash" /> ล้างแปลง
+                        </button>
+                        <button
+                          className="mds-btn"
+                          style={{
+                            flex: 1.5,
+                            background: "linear-gradient(135deg, #0d9488, #0f766e)",
+                            color: "#fff",
+                            border: "none",
+                            boxShadow: "0 4px 10px rgba(13,148,136,0.25)"
+                          }}
+                          onClick={() => setCurrentStep(2)}
+                        >
+                          <i className="bi bi-arrow-right-circle" /> กรอกข้อมูลแปลง
+                        </button>
+                      </div>
                     )}
                   </div>
                 )}
@@ -1324,11 +1890,12 @@ export default function MapDrawPage() {
                 searchCount={searchCount}
                 searchTruncated={searchTruncated}
                 parcelFeatures={drawnParcels}
+                luFeatures={parcelFeatures}
                 userDisplayName={user?.fullname ?? ""}
                 drawnGeometry={drawnGeometry}
                 onFlyTo={flyToFeature}
                 onReset={clearDraw}
-                onBack={backToStep1}
+                onBack={clearDraw}
                 onCancel={cancelSearch}
                 currentStep={currentStep}
                 onStepChange={setCurrentStep}
@@ -1340,6 +1907,7 @@ export default function MapDrawPage() {
                 onFinishDraw={() => finishDraw()}
                 onCancelDraw={cancelDrawMode}
                 onLandUseChange={handleLandUseChange}
+                onProjectTypeChange={handleProjectTypeChange}
               />
             </div>
           )}
@@ -1379,6 +1947,14 @@ export default function MapDrawPage() {
         </div>
       )}
     </div>
+  );
+}
+
+export default function MapDrawPage() {
+  return (
+    <Suspense fallback={<div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "#f8fdfb" }}><div className="spinner-border" style={{ color: "#10b981" }} /></div>}>
+      <MapDrawContent />
+    </Suspense>
   );
 }
 
