@@ -128,6 +128,51 @@ export function truncateCoords(geom: GeoJSON.Geometry): GeoJSON.Geometry {
   return { ...(geom as any), coordinates: walk((geom as any).coordinates) } as GeoJSON.Geometry;
 }
 
+/**
+ * Sanitise a Polygon/MultiPolygon geometry before sending to the backend.
+ * Removes consecutive duplicate vertices (which cause Shapely TopologyException)
+ * and ensures every ring is properly closed (first coord == last coord).
+ * Also applies 6-decimal-place truncation so the payload stays small.
+ */
+export function sanitizePolygonForApi(geom: GeoJSON.Geometry): GeoJSON.Geometry {
+  const truncated = truncateCoords(geom) as GeoJSON.Polygon | GeoJSON.MultiPolygon | GeoJSON.Geometry;
+
+  const cleanRing = (ring: GeoJSON.Position[]): GeoJSON.Position[] => {
+    if (ring.length === 0) return ring;
+    // Remove consecutive duplicate points
+    const deduped: GeoJSON.Position[] = [ring[0]];
+    for (let i = 1; i < ring.length; i++) {
+      const prev = deduped[deduped.length - 1];
+      if (ring[i][0] !== prev[0] || ring[i][1] !== prev[1]) {
+        deduped.push(ring[i]);
+      }
+    }
+    // Ensure ring is closed
+    const first = deduped[0];
+    const last = deduped[deduped.length - 1];
+    if (deduped.length > 1 && (first[0] !== last[0] || first[1] !== last[1])) {
+      deduped.push([first[0], first[1]]);
+    }
+    return deduped;
+  };
+
+  if ((truncated as GeoJSON.Polygon).type === "Polygon") {
+    const poly = truncated as GeoJSON.Polygon;
+    return {
+      ...poly,
+      coordinates: poly.coordinates.map(cleanRing),
+    };
+  }
+  if ((truncated as GeoJSON.MultiPolygon).type === "MultiPolygon") {
+    const mp = truncated as GeoJSON.MultiPolygon;
+    return {
+      ...mp,
+      coordinates: mp.coordinates.map(rings => rings.map(cleanRing)),
+    };
+  }
+  return truncated;
+}
+
 export function validateAndFixGeoJSON(
   feature: GeoJSON.Feature,
   utm?: { zone: number; isNorth: boolean },
