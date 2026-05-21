@@ -14,6 +14,7 @@ import {
   detectUtmFromPrj,
   detectUtmZoneAuto,
   truncateCoords,
+  sanitizePolygonForApi,
 } from "@/lib/map-utils";
 import { getPlantationInfo } from "@/lib/carbon-api";
 import { ParcelResultsPanel } from "@/app/components/organisms";
@@ -460,82 +461,81 @@ function MapDrawContent() {
     };
   }, [mapLoaded]);
 
-  // Tracks which lu_class values are checked in the panel (for map highlighting)
-  const [visibleLuClasses, setVisibleLuClasses] = useState<Record<string, boolean>>({ A: true, A302: true });
+  // Per-plot LU checked state ref — updated by the panel via onLandUseChange
+  const allPlotsCheckedRef = useRef<Record<number, Record<string, boolean>>>({});
 
-  const handleLandUseChange = useCallback((checked: Record<string, boolean>) => {
-    setVisibleLuClasses(checked);
+  const handleLandUseChange = useCallback((allPlotsChecked: Record<number, Record<string, boolean>>, focusedPlotIdx?: number | null) => {
+    allPlotsCheckedRef.current = allPlotsChecked;
     const map = mapRef.current;
     if (!map || !mapLoadedRef.current) return;
 
-    const checkedClasses = Object.entries(checked)
-      .filter(([, on]) => on)
-      .map(([cls]) => cls);
-
-    const colorMap = [
+    // Define fill colors for all LU type groups (opacity expression controls visibility)
+    const fillColorMap = [
       "case",
-      ["==", ["slice", ["to-string", ["coalesce", ["get", "lu_class"], ""]], 0, 1], "U"], "#ef4444",
-      ["==", ["slice", ["to-string", ["coalesce", ["get", "lu_class"], ""]], 0, 1], "A"], "#84cc16",
-      ["==", ["slice", ["to-string", ["coalesce", ["get", "lu_class"], ""]], 0, 1], "F"], "#166534",
-      ["==", ["slice", ["to-string", ["coalesce", ["get", "lu_class"], ""]], 0, 1], "W"], "#3b82f6",
-      ["==", ["slice", ["to-string", ["coalesce", ["get", "lu_class"], ""]], 0, 1], "M"], "#9ca3af",
-      "#ff9100"
-    ];
+      ["==", ["to-string", ["coalesce", ["get", "lu_class"], ""]], "A302"], "#84cc16",
+      ["==", ["slice", ["coalesce", ["get", "lu_class"], ""], 0, 1], "F"], "#166534",
+      ["==", ["slice", ["coalesce", ["get", "lu_class"], ""], 0, 1], "W"], "#3b82f6",
+      ["==", ["slice", ["coalesce", ["get", "lu_class"], ""], 0, 1], "M"], "#9ca3af",
+      ["==", ["slice", ["coalesce", ["get", "lu_class"], ""], 0, 1], "U"], "#ef4444",
+      ["==", ["slice", ["coalesce", ["get", "lu_class"], ""], 0, 1], "A"], "#84cc16",
+      "rgba(0,0,0,0)"
+    ] as unknown as maplibregl.ExpressionSpecification;
+
+    const lineColorMap = [
+      "case",
+      ["==", ["to-string", ["coalesce", ["get", "lu_class"], ""]], "A302"], "#84cc16",
+      "#64748b"
+    ] as unknown as maplibregl.ExpressionSpecification;
 
     map.setFilter("matched-parcels-fill", null);
     map.setFilter("matched-parcels-line", null);
-    map.setPaintProperty("matched-parcels-fill", "fill-color", colorMap as unknown as maplibregl.ExpressionSpecification);
-    map.setPaintProperty("matched-parcels-line", "line-color", "#64748b");
-    map.setPaintProperty("matched-parcels-line", "line-width", 1.5);
-    // Outlines are always visible so the user can see all polygon boundaries
-    map.setPaintProperty("matched-parcels-line", "line-opacity", 1);
+    map.setPaintProperty("matched-parcels-fill", "fill-color", fillColorMap);
+    map.setPaintProperty("matched-parcels-line", "line-color", lineColorMap);
+    map.setPaintProperty("matched-parcels-line", "line-width", 2.2);
 
-    if (checkedClasses.length === 0) {
-      map.setPaintProperty("matched-parcels-fill", "fill-opacity", 0);
-      return;
+    // A302 must always show fill+line when detected, regardless of checkbox state.
+    const isA302 = ["==", ["to-string", ["coalesce", ["get", "lu_class"], ""]], "A302"];
+
+    // Always show ALL plots' checked LU polygons so previously checked data
+    // remains visible when switching between plots in the panel.
+    const keysToProcess = Object.keys(allPlotsChecked);
+
+    const plotConditions: unknown[] = [];
+    for (const plotIdxStr of keysToProcess) {
+      const checked = allPlotsChecked[parseInt(plotIdxStr)];
+      if (!checked) continue;
+      const checkedClasses = Object.entries(checked).filter(([, on]) => on).map(([cls]) => cls);
+      if (checkedClasses.length === 0) continue;
+      plotConditions.push([
+        "all",
+        ["==", ["get", "plot_index"], String(parseInt(plotIdxStr, 10) + 1)],
+        ["match", ["coalesce", ["get", "lu_class"], ""], checkedClasses, true, false]
+      ]);
     }
 
-    const isChecked = ["match", ["coalesce", ["get", "lu_class"], ""], checkedClasses, true, false];
-    map.setPaintProperty("matched-parcels-fill", "fill-opacity",
-      ["case", isChecked, 0.65, 0] as unknown as maplibregl.ExpressionSpecification);
+    // Line: always visible for all detected polygons (shows boundaries without color)
+    map.setPaintProperty("matched-parcels-line", "line-opacity", 1);
+
+    // Fill: A302 always shows color; other types get fill only when checkbox is checked
+    if (plotConditions.length > 0) {
+      const checkedExpr = plotConditions.length === 1 ? plotConditions[0] : ["any", ...plotConditions];
+      map.setPaintProperty("matched-parcels-fill", "fill-opacity",
+        ["case",
+          isA302, 0.65,
+          checkedExpr, 0.65,
+          0
+        ] as unknown as maplibregl.ExpressionSpecification);
+    } else {
+      map.setPaintProperty("matched-parcels-fill", "fill-opacity",
+        ["case", isA302, 0.65, 0] as unknown as maplibregl.ExpressionSpecification);
+    }
   }, []);
 
-  // Map Effect: Show checked LU classes, hide unchecked ones
+  // Re-apply LU fills when new parcel data arrives
   useEffect(() => {
-    const map = mapRef.current;
-    if (!map || !mapLoadedRef.current) return;
-
-    const checkedClasses = Object.entries(visibleLuClasses)
-      .filter(([, on]) => on)
-      .map(([cls]) => cls);
-
-    const colorMap = [
-      "case",
-      ["==", ["slice", ["to-string", ["coalesce", ["get", "lu_class"], ""]], 0, 1], "U"], "#ef4444",
-      ["==", ["slice", ["to-string", ["coalesce", ["get", "lu_class"], ""]], 0, 1], "A"], "#84cc16",
-      ["==", ["slice", ["to-string", ["coalesce", ["get", "lu_class"], ""]], 0, 1], "F"], "#166534",
-      ["==", ["slice", ["to-string", ["coalesce", ["get", "lu_class"], ""]], 0, 1], "W"], "#3b82f6",
-      ["==", ["slice", ["to-string", ["coalesce", ["get", "lu_class"], ""]], 0, 1], "M"], "#9ca3af",
-      "#ff9100"
-    ];
-
-    map.setFilter("matched-parcels-fill", null);
-    map.setFilter("matched-parcels-line", null);
-    map.setPaintProperty("matched-parcels-fill", "fill-color", colorMap as unknown as maplibregl.ExpressionSpecification);
-    map.setPaintProperty("matched-parcels-line", "line-color", "#64748b");
-    map.setPaintProperty("matched-parcels-line", "line-width", 1.5);
-    map.setPaintProperty("matched-parcels-line", "line-opacity", 1);
-
-    if (checkedClasses.length === 0) {
-      map.setPaintProperty("matched-parcels-fill", "fill-opacity", 0);
-      return;
-    }
-
-    // Fill only checked lu_class polygons; outlines remain visible for all
-    const isChecked = ["match", ["coalesce", ["get", "lu_class"], ""], checkedClasses, true, false];
-    map.setPaintProperty("matched-parcels-fill", "fill-opacity",
-      ["case", isChecked, 0.65, 0] as unknown as maplibregl.ExpressionSpecification);
-  }, [visibleLuClasses, parcelFeatures, selectedPlotIndex]);
+    handleLandUseChange(allPlotsCheckedRef.current);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [parcelFeatures, handleLandUseChange]);
 
   // ===== MAP INIT =====
   useEffect(() => {
@@ -690,12 +690,8 @@ function MapDrawContent() {
         paint: {
           "fill-color": [
             "case",
-            ["==", ["slice", ["to-string", ["coalesce", ["get", "lu_class"], ""]], 0, 1], "U"], "#ef4444",
-            ["==", ["slice", ["to-string", ["coalesce", ["get", "lu_class"], ""]], 0, 1], "A"], "#84cc16",
-            ["==", ["slice", ["to-string", ["coalesce", ["get", "lu_class"], ""]], 0, 1], "F"], "#166534",
-            ["==", ["slice", ["to-string", ["coalesce", ["get", "lu_class"], ""]], 0, 1], "W"], "#3b82f6",
-            ["==", ["slice", ["to-string", ["coalesce", ["get", "lu_class"], ""]], 0, 1], "M"], "#9ca3af",
-            "#ff9100" // default fallback
+            ["==", ["to-string", ["coalesce", ["get", "lu_class"], ""]], "A302"], "#84cc16",
+            "rgba(0,0,0,0)"
           ],
           "fill-opacity": 0
         },
@@ -705,7 +701,15 @@ function MapDrawContent() {
         type: "line",
         source: "matched-parcels",
         layout: { "line-join": "round", "line-cap": "round" },
-        paint: { "line-color": "#64748b", "line-width": 2.2, "line-opacity": 1 },
+        paint: {
+          "line-color": [
+            "case",
+            ["==", ["to-string", ["coalesce", ["get", "lu_class"], ""]], "A302"], "#84cc16",
+            "#64748b"
+          ],
+          "line-width": 2.2,
+          "line-opacity": 1
+        },
       });
       map.addLayer({
         id: "matched-parcels-label",
@@ -1194,97 +1198,95 @@ function MapDrawContent() {
       return;
     }
 
-    // Combine all drawn polygons into one MultiPolygon (handles Polygon and MultiPolygon features)
+    // Build combined geometry only for drawnGeometry state tracking
     const rings: GeoJSON.Position[][][] = drawnParcels.flatMap(p => {
       if (p.geometry.type === "Polygon") return [(p.geometry as GeoJSON.Polygon).coordinates];
       if (p.geometry.type === "MultiPolygon") return (p.geometry as GeoJSON.MultiPolygon).coordinates;
       return [];
     });
-    const combinedGeom: GeoJSON.MultiPolygon = {
-      type: "MultiPolygon",
-      coordinates: rings,
-    };
-
-    setDrawnGeometry(combinedGeom);
+    setDrawnGeometry({ type: "MultiPolygon", coordinates: rings });
     setSearchRunning(true);
     setSearchErr(null);
     setSearchCount(null);
     setSearchTruncated(false);
 
     try {
-      const result = await getPlantationInfo({
-        id: `search-${Date.now()}`,
-        geometry: truncateCoords(combinedGeom),
-        project_type: activeProjType,
-        output_crs: "EPSG:4326",
-      });
-      console.log("[KeptCarbon] plantation-info response:", JSON.stringify(result, null, 2));
+      const allFeatures: GeoJSON.Feature[] = [];
+      const allLUStats: { lu_class: string; area_percent: number }[] = [];
 
-      // Show ALL lu_polygon features on map with lu_class for colour coding
-      const allLU = result.lu_polygon ?? [];
-
-      // Assign each LU polygon to the correct drawn parcel via centroid-in-polygon check
-      const getCenter = (geom: GeoJSON.Geometry): [number, number] => {
-        const coords: [number, number][] = [];
-        const walk = (c: unknown): void => {
-          if (!Array.isArray(c)) return;
-          if (typeof c[0] === "number") { coords.push(c as [number, number]); return; }
-          c.forEach(walk);
-        };
-        walk((geom as GeoJSON.Polygon | GeoJSON.MultiPolygon).coordinates);
-        if (coords.length === 0) return [0, 0];
-        return [coords.reduce((s, p) => s + p[0], 0) / coords.length,
-                coords.reduce((s, p) => s + p[1], 0) / coords.length];
-      };
-      const ptInRing = (pt: [number, number], ring: [number, number][]): boolean => {
-        let inside = false;
-        for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
-          const [xi, yi] = ring[i], [xj, yj] = ring[j];
-          if ((yi > pt[1]) !== (yj > pt[1]) && pt[0] < (xj - xi) * (pt[1] - yi) / (yj - yi) + xi)
-            inside = !inside;
+      // Send one request per parcel — avoids 500 errors from combined MultiPolygon
+      // and ensures each parcel's LU data is assigned directly by index
+      for (let pi = 0; pi < drawnParcels.length; pi++) {
+        const parcel = drawnParcels[pi];
+        try {
+          const result = await getPlantationInfo({
+            id: `parcel-${pi}-${Date.now()}`,
+            geometry: sanitizePolygonForApi(parcel.geometry),
+            project_type: activeProjType,
+            output_crs: "EPSG:4326",
+          });
+          console.log(`[KeptCarbon] plantation-info parcel ${pi}:`, JSON.stringify(result, null, 2));
+          const luPolygons = result.lu_polygon ?? [];
+          if (luPolygons.length > 0) {
+            luPolygons.forEach(lu => {
+              allLUStats.push({ lu_class: lu.lu_class, area_percent: lu.area_percent });
+              allFeatures.push({
+                type: "Feature",
+                geometry: lu.geometry,
+                properties: {
+                  plot_index: String(pi + 1),
+                  lu_class: lu.lu_class,
+                  lu_class_desc_th: lu.lu_class_desc_th,
+                  area_m2: lu.area_m2,
+                  area_percent: lu.area_percent,
+                },
+              });
+            });
+          } else {
+            // No LU data returned — use the drawn parcel as a fallback feature
+            allFeatures.push({
+              type: "Feature",
+              geometry: parcel.geometry,
+              properties: {
+                plot_index: String(pi + 1),
+                lu_class: null,
+                lu_class_desc_th: null,
+                area_m2: null,
+                area_percent: null,
+              },
+            });
+          }
+          if (result.status.status === "error" && luPolygons.length === 0) {
+            const msg = result.status.status_code === "E01"
+              ? `แปลงที่ ${pi + 1}: พื้นที่วาดอยู่นอกจังหวัดที่รองรับ`
+              : `แปลงที่ ${pi + 1}: ไม่พบข้อมูลการใช้ที่ดิน`;
+            console.warn(msg);
+          }
+        } catch (parcelErr) {
+          console.error(`[KeptCarbon] plantation-info error parcel ${pi}:`, parcelErr);
+          // Fallback: use drawn parcel geometry when API fails
+          allFeatures.push({
+            type: "Feature",
+            geometry: parcel.geometry,
+            properties: {
+              plot_index: String(pi + 1),
+              lu_class: null,
+              lu_class_desc_th: null,
+              area_m2: null,
+              area_percent: null,
+            },
+          });
         }
-        return inside;
-      };
-      const ptInGeom = (pt: [number, number], geom: GeoJSON.Geometry): boolean => {
-        if (geom.type === "Polygon")
-          return ptInRing(pt, (geom as GeoJSON.Polygon).coordinates[0] as [number, number][]);
-        if (geom.type === "MultiPolygon")
-          return (geom as GeoJSON.MultiPolygon).coordinates.some(poly =>
-            ptInRing(pt, poly[0] as [number, number][]));
-        return false;
-      };
-
-      const features: GeoJSON.Feature[] = allLU.map((lu) => {
-        const center = getCenter(lu.geometry);
-        let plotIdx = 1; // default to plot 1
-        for (let pi = 0; pi < drawnParcels.length; pi++) {
-          if (ptInGeom(center, drawnParcels[pi].geometry)) { plotIdx = pi + 1; break; }
-        }
-        return {
-          type: "Feature",
-          geometry: lu.geometry,
-          properties: {
-            plot_index: String(plotIdx),
-            lu_class: lu.lu_class,
-            lu_class_desc_th: lu.lu_class_desc_th,
-            area_m2: lu.area_m2,
-            area_percent: lu.area_percent,
-          },
-        };
-      });
+      }
 
       const map = mapRef.current;
       if (map && mapLoadedRef.current) {
         (map.getSource("matched-parcels") as maplibregl.GeoJSONSource | undefined)
-          ?.setData({ type: "FeatureCollection", features });
-
-        // Apply initial lu checked state to map colors
-        handleLandUseChange(visibleLuClasses);
-
-        // Fit map to show all returned land-use polygons
-        if (features.length > 0) {
+          ?.setData({ type: "FeatureCollection", features: allFeatures });
+        handleLandUseChange(allPlotsCheckedRef.current);
+        if (allFeatures.length > 0) {
           const bounds = new maplibregl.LngLatBounds();
-          features.forEach(f => {
+          allFeatures.forEach(f => {
             const walk = (coords: unknown): void => {
               if (!Array.isArray(coords)) return;
               if (typeof coords[0] === "number") { bounds.extend(coords as [number, number]); return; }
@@ -1298,30 +1300,33 @@ function MapDrawContent() {
         }
       }
 
-      setParcelFeatures(features);
+      setParcelFeatures(allFeatures);
 
-      // Count rubber (A302) specifically for status / error messages
-      const rubberLU = allLU.filter(lu => lu.lu_class === "A302");
-
-      if (result.status.status === "error" || allLU.length === 0) {
-        const msg = result.status.status_code === "E01"
-          ? "พื้นที่วาดอยู่นอกจังหวัดที่รองรับ กรุณาวาดในพื้นที่จังหวัดระยอง"
-          : "ไม่พบข้อมูลการใช้ที่ดินในขอบเขตที่วาด กรุณาวาดใหม่";
-        setSearchErr(msg);
-        setSearchCount(0);
-        setStatus("ไม่พบข้อมูล");
+      if (allLUStats.length === 0) {
+        const hasRealLU = allFeatures.some(f => f.properties?.lu_class != null);
+        if (hasRealLU) {
+          setSearchCount(allFeatures.length);
+          setStatus("พบข้อมูลบางส่วน");
+        } else {
+          // No LU data back from API — proceed with empty data so the form still opens
+          setSearchCount(0);
+          setStatus("ไม่พบข้อมูลการใช้ที่ดิน — สามารถกรอกข้อมูลแปลงต่อได้");
+        }
       } else {
-        const rubberPct = rubberLU.reduce((s, lu) => s + lu.area_percent, 0);
-        setSearchCount(allLU.length);
-        const rubberNote = rubberLU.length > 0 ? ` · ยางพารา A302 ${rubberPct.toFixed(1)}%` : " · ไม่พบยางพารา";
-        setStatus(`พบ ${allLU.length} พื้นที่ใช้ที่ดิน${rubberNote}`);
+        const rubberStats = allLUStats.filter(lu => lu.lu_class === "A302");
+        const rubberPct = drawnParcels.length > 0
+          ? rubberStats.reduce((s, lu) => s + lu.area_percent, 0) / drawnParcels.length
+          : 0;
+        setSearchCount(allLUStats.length);
+        const rubberNote = rubberStats.length > 0 ? ` · ยางพารา A302 ${rubberPct.toFixed(1)}%` : " · ไม่พบยางพารา";
+        setStatus(`พบ ${allLUStats.length} พื้นที่ใช้ที่ดิน${rubberNote}`);
       }
     } catch (err) {
       setSearchErr(err instanceof Error ? err.message : String(err));
     } finally {
       setSearchRunning(false);
     }
-  }, [drawnParcels, totalDrawnArea, handleLandUseChange, visibleLuClasses, projectType]);
+  }, [drawnParcels, totalDrawnArea, handleLandUseChange, projectType]);
 
   const handleProjectTypeChange = useCallback((type: "replanting" | "existing") => {
     setProjectType(type);

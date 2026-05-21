@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 import { useState, useMemo, useEffect, useRef } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { carbonForAge } from "@/lib/map-utils";
@@ -30,7 +30,7 @@ type Props = {
     isDrawing?: boolean;
     onFinishDraw?: () => void;
     onCancelDraw?: () => void;
-    onLandUseChange?: (checked: Record<string, boolean>) => void;
+    onLandUseChange?: (allPlotsChecked: Record<number, Record<string, boolean>>, focusedPlotIdx?: number | null) => void;
     onProjectTypeChange?: (type: "replanting" | "existing") => void;
 };
 
@@ -572,12 +572,20 @@ export function ParcelResultsPanel({
         }
 
         featuresToUse.forEach(feat => {
-            const samplePoint = getSamplePoint(feat.geometry);
+            const props = (feat.properties ?? {}) as Record<string, unknown>;
+            const plotIdxFromProp = props.plot_index !== undefined
+                ? parseInt(String(props.plot_index), 10) - 1
+                : -1;
             let matchedPlotIdx = 0;
-            for (let idx = 0; idx < parcelFeatures.length; idx++) {
-                if (isPointInGeometry(samplePoint, parcelFeatures[idx].geometry)) {
-                    matchedPlotIdx = idx;
-                    break;
+            if (plotIdxFromProp >= 0 && plotIdxFromProp < parcelFeatures.length) {
+                matchedPlotIdx = plotIdxFromProp;
+            } else {
+                const samplePoint = getSamplePoint(feat.geometry);
+                for (let idx = 0; idx < parcelFeatures.length; idx++) {
+                    if (isPointInGeometry(samplePoint, parcelFeatures[idx].geometry)) {
+                        matchedPlotIdx = idx;
+                        break;
+                    }
                 }
             }
             featsByPlot[matchedPlotIdx].push(feat);
@@ -712,16 +720,6 @@ export function ParcelResultsPanel({
         prevPlotsLen.current = plots.length;
     }, [plots.length]);
 
-    // Sync map with currently expanded plot whenever step 2 is active or expandedIdx changes
-    useEffect(() => {
-        if (currentStep !== 2) return;
-        if (expandedIdx !== null) {
-            onMapPlotSelected?.(expandedIdx);
-            const luChecked = plotForms[expandedIdx]?.luChecked;
-            if (luChecked) onLandUseChange?.(luChecked);
-        }
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [currentStep, expandedIdx]);
 
     // Step 3 form
     // Sub-step tracking for Step 3 results view
@@ -736,6 +734,55 @@ export function ParcelResultsPanel({
     const [saveState, setSaveState] = useState<"idle" | "saving" | "done">("idle");
     const [showInputDetails, setShowInputDetails] = useState(false);
     const [plotForms, setPlotForms] = useState<PlotFormData[]>([]);
+
+    // When plotForms grows (new parcel added), propagate initial luChecked to map
+    const prevPlotFormsLen = useRef(0);
+    useEffect(() => {
+        if (plotForms.length > prevPlotFormsLen.current && currentStep === 2) {
+            const allChecked: Record<number, Record<string, boolean>> = {};
+            plotForms.forEach((f, idx) => { allChecked[idx] = f.luChecked; });
+            onLandUseChange?.(allChecked, expandedIdx);
+        }
+        prevPlotFormsLen.current = plotForms.length;
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [plotForms.length]);
+
+    // Sync map with currently expanded plot whenever step 2 is active or expandedIdx changes
+    useEffect(() => {
+        if (currentStep !== 2) return;
+        if (expandedIdx !== null) {
+            onMapPlotSelected?.(expandedIdx);
+            const allChecked: Record<number, Record<string, boolean>> = {};
+            plotForms.forEach((f, idx) => { allChecked[idx] = f.luChecked; });
+            onLandUseChange?.(allChecked, expandedIdx);
+        }
+    }, [currentStep, expandedIdx, plotForms, onMapPlotSelected, onLandUseChange]);
+    // Auto-collapse the expanded plot when it first gets a plantStatus (transitions empty → filled)
+    const expandedStatusTrackRef = useRef<{ idx: number | null; status: string }>({ idx: null, status: "" });
+    useEffect(() => {
+        const prev = expandedStatusTrackRef.current;
+
+        // expandedIdx changed — reset tracking to the new plot's current status
+        if (expandedIdx !== prev.idx) {
+            expandedStatusTrackRef.current = {
+                idx: expandedIdx,
+                status: expandedIdx !== null ? (plotForms[expandedIdx]?.plantStatus || "") : "",
+            };
+            return;
+        }
+
+        if (expandedIdx === null) return;
+
+        const currStatus = plotForms[expandedIdx]?.plantStatus || "";
+        if (!prev.status && currStatus) {
+            // Status was just set on the currently expanded plot — collapse after short delay
+            const timer = setTimeout(() => setExpandedIdx(null), 700);
+            expandedStatusTrackRef.current = { idx: expandedIdx, status: currStatus };
+            return () => clearTimeout(timer);
+        }
+        expandedStatusTrackRef.current = { idx: expandedIdx, status: currStatus };
+    }, [expandedIdx, plotForms]);
+
     const [carbonResults, setCarbonResults] = useState<CarbonResult[]>([]);
     const [backendResponses, setBackendResponses] = useState<EstimationResponse[] | null>(null);
     const [processingCarbon, setProcessingCarbon] = useState(false);
@@ -748,10 +795,9 @@ export function ParcelResultsPanel({
     }, [plotForms]);
 
     const sortedPlotIndices = useMemo(() => {
-        const unfilled = plots.map((_, idx) => idx).filter(idx => !plotForms[idx]?.plantStatus);
-        const filled = plots.map((_, idx) => idx).filter(idx => !!plotForms[idx]?.plantStatus);
-        return [...unfilled, ...filled];
-    }, [plots, plotForms]);
+        // Newest plot always goes first (reverse index order)
+        return plots.map((_, idx) => idx).reverse();
+    }, [plots]);
     // Initialize plotForms automatically when ready
     useEffect(() => {
         if (plots.length !== plotForms.length) {
@@ -779,8 +825,8 @@ export function ParcelResultsPanel({
                             treeCount: props.trees ? String(props.trees) : "",
                             variety: props.variety || "",
                             spacing: props.spacing || "",
-                            luChecked: initialLU,
-                            luMockData: generateMockLU(plots[i].areaRai, initialLU)
+                            luChecked: { ...initialLU },
+                            luMockData: generateMockLU(plots[i].areaRai, { ...initialLU })
                         });
                     }
                     return next;
@@ -810,12 +856,20 @@ export function ParcelResultsPanel({
         }
 
         featuresToUse.forEach(feat => {
-            const samplePoint = getSamplePoint(feat.geometry);
-            let matchedPlotIdx = 0; // fallback to 0
-            for (let idx = 0; idx < parcelFeatures.length; idx++) {
-                if (isPointInGeometry(samplePoint, parcelFeatures[idx].geometry)) {
-                    matchedPlotIdx = idx;
-                    break;
+            const props = (feat.properties ?? {}) as Record<string, unknown>;
+            const plotIdxFromProp = props.plot_index !== undefined
+                ? parseInt(String(props.plot_index), 10) - 1
+                : -1;
+            let matchedPlotIdx = 0;
+            if (plotIdxFromProp >= 0 && plotIdxFromProp < parcelFeatures.length) {
+                matchedPlotIdx = plotIdxFromProp;
+            } else {
+                const samplePoint = getSamplePoint(feat.geometry);
+                for (let idx = 0; idx < parcelFeatures.length; idx++) {
+                    if (isPointInGeometry(samplePoint, parcelFeatures[idx].geometry)) {
+                        matchedPlotIdx = idx;
+                        break;
+                    }
                 }
             }
             allFeatsByPlot[matchedPlotIdx].push(feat);
@@ -1242,7 +1296,9 @@ export function ParcelResultsPanel({
                                         if (parcelFeatures[i]) {
                                             onFlyTo(parcelFeatures[i]);
                                             onMapPlotSelected?.(i);
-                                            onLandUseChange?.(plotForms[i]?.luChecked || { A: true, A302: true });
+                                            const allChecked: Record<number, Record<string, boolean>> = {};
+                                            plotForms.forEach((f, idx) => { allChecked[idx] = f.luChecked; });
+                                        onLandUseChange?.(allChecked, i);
                                         }
                                     }}
                                     style={{
@@ -1324,6 +1380,7 @@ export function ParcelResultsPanel({
                                                     style={{ marginBottom: 0, height: 46, borderRadius: 10, border: "1.5px solid #e2e8f0", padding: "0 12px" }}
                                                     value={form.variety}
                                                     onChange={e => updateForm(i, "variety", e.target.value)}
+                                                    disabled={!form.plantStatus}
                                                 >
                                                     <option value="">— เลือกสายพันธุ์ยาง —</option>
                                                     {VARIETY_OPTIONS.map(v => <option key={v} value={v}>{v}</option>)}
@@ -1340,6 +1397,7 @@ export function ParcelResultsPanel({
                                                     placeholder="ระบุจำนวนต้น เช่น 70"
                                                     value={form.treeCount}
                                                     onChange={e => updateForm(i, "treeCount", e.target.value)}
+                                                    disabled={!form.plantStatus}
                                                 />
                                             </div>
                                             <div className="prp-field-group">
@@ -1351,6 +1409,7 @@ export function ParcelResultsPanel({
                                                     style={{ marginBottom: 0, height: 46, borderRadius: 10, border: "1.5px solid #e2e8f0", padding: "0 12px" }}
                                                     value={form.spacing}
                                                     onChange={e => updateForm(i, "spacing", e.target.value)}
+                                                    disabled={!form.plantStatus}
                                                 >
                                                     <option value="">— เลือกระยะปลูก —</option>
                                                     {SPACING_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}
@@ -1366,40 +1425,51 @@ export function ParcelResultsPanel({
                                             <div style={{ display: "flex", flexDirection: "column", gap: 10, fontSize: 13 }}>
                                                 {(() => {
                                                     const plotLUData = plotsLuRealData[i] || {};
-                                                    
+                                                    const isNew = form.plantStatus === "new";
+                                                    const isOld = form.plantStatus === "old";
+
+                                                    // Behavior differs by plantStatus:
+                                                    // replanting: A, M, W, F, A-sub checkable (U displayOnly, A302 fixed)
+                                                    // existing:   A fixed, F checkable, A-sub checkable (U,W,M displayOnly, A302 fixed)
                                                     const baseLU = [
-                                                        { id: "U", label: "U พื้นที่ชุมชนและสิ่งปลูกสร้าง", color: "#ef4444" },
-                                                        { id: "A", label: "A พื้นที่เกษตรกรรม", color: "#84cc16", fixed: true },
+                                                        { id: "U", label: "U พื้นที่ชุมชนและสิ่งปลูกสร้าง", color: "#ef4444", displayOnly: true },
+                                                        ...(isNew
+                                                            ? [{ id: "A", label: "A พื้นที่เกษตรกรรม", color: "#84cc16" }]
+                                                            : [{ id: "A", label: "A พื้นที่เกษตรกรรม", color: "#84cc16", fixed: true }]
+                                                        ),
                                                         { id: "F", label: "F พื้นที่ป่าไม้", color: "#166534" },
-                                                        { id: "W", label: "W แหล่งน้ำ", color: "#3b82f6" },
-                                                        { id: "M", label: "M พื้นที่เบ็ดเตล็ด", color: "#9ca3af" },
+                                                        ...(isNew
+                                                            ? [{ id: "W", label: "W แหล่งน้ำ", color: "#3b82f6" }]
+                                                            : [{ id: "W", label: "W แหล่งน้ำ", color: "#3b82f6", displayOnly: true }]
+                                                        ),
+                                                        ...(isNew
+                                                            ? [{ id: "M", label: "M พื้นที่เบ็ดเตล็ด", color: "#9ca3af" }]
+                                                            : [{ id: "M", label: "M พื้นที่เบ็ดเตล็ด", color: "#9ca3af", displayOnly: true }]
+                                                        ),
                                                     ];
                                                     const displayLU: any[] = [];
                                                     baseLU.forEach(base => {
-                                                        const realBaseData = plotLUData[base.id];
-                                                        const hasBase = realBaseData && realBaseData.rai > 0;
-                                                        
-                                                        if (hasBase) {
-                                                            displayLU.push({ ...base, disabled: false });
-                                                            
-                                                            if (base.id === "A") {
-                                                                const aSubtypes = Object.keys(plotLUData).filter(k => k.startsWith("A") && k !== "A").sort();
-                                                                aSubtypes.forEach(sub => {
-                                                                    const realSubData = plotLUData[sub];
-                                                                    if (realSubData && realSubData.rai > 0) {
-                                                                        const desc = realSubData.desc || (sub === "A302" ? "ยางพารา" : sub === "A303" ? "ปาล์มน้ำมัน" : sub === "A304" ? "ไม้ผล" : "หมวดย่อย A");
-                                                                        const isA302 = sub === "A302";
-                                                                        displayLU.push({
-                                                                            id: sub,
-                                                                            label: `${sub} ${desc}`,
-                                                                            disabled: false,
-                                                                            fixed: isA302,
-                                                                            indent: true,
-                                                                            color: "#84cc16"
-                                                                        });
-                                                                    }
-                                                                });
-                                                            }
+                                                        // Only show types that were detected by the API
+                                                        const hasBase = plotLUData[base.id] && plotLUData[base.id].rai > 0;
+                                                        if (!hasBase) return;
+                                                        displayLU.push({ ...base });
+
+                                                        if (base.id === "A") {
+                                                            const aSubtypes = Object.keys(plotLUData).filter(k => k.startsWith("A") && k !== "A").sort();
+                                                            aSubtypes.forEach(sub => {
+                                                                const realSubData = plotLUData[sub];
+                                                                if (realSubData && realSubData.rai > 0) {
+                                                                    const desc = realSubData.desc || (sub === "A302" ? "ยางพารา" : sub === "A303" ? "ปาล์มน้ำมัน" : sub === "A304" ? "ไม้ผล" : "หมวดย่อย A");
+                                                                    const isA302 = sub === "A302";
+                                                                    displayLU.push({
+                                                                        id: sub,
+                                                                        label: `${sub} ${desc}`,
+                                                                        fixed: isA302,
+                                                                        indent: true,
+                                                                        color: "#84cc16"
+                                                                    });
+                                                                }
+                                                            });
                                                         }
                                                     });
 
@@ -1408,32 +1478,39 @@ export function ParcelResultsPanel({
                                                     }
 
                                                     return displayLU.map(lu => {
-                                                        const isChecked = lu.fixed ? true : (form.luChecked?.[lu.id] || false);
+                                                        const isDisabled = !form.plantStatus || lu.fixed || lu.displayOnly;
+                                                        const isChecked = lu.fixed ? true : (lu.displayOnly ? false : (form.luChecked?.[lu.id] || false));
                                                         const realData = plotLUData[lu.id];
                                                         const hasArea = realData && realData.rai > 0;
                                                         return (
                                                             <label key={lu.id} style={{
                                                                 display: "flex", alignItems: "center", gap: 8,
-                                                                cursor: lu.fixed ? "not-allowed" : "pointer",
+                                                                cursor: isDisabled ? "not-allowed" : "pointer",
                                                                 paddingLeft: lu.indent ? 24 : 0
                                                             }}>
                                                                 <input
                                                                     type="checkbox"
                                                                     checked={isChecked}
-                                                                    disabled={lu.fixed}
+                                                                    disabled={isDisabled}
                                                                     style={{ accentColor: isChecked ? lu.color : "#94a3b8", width: 16, height: 16 }}
                                                                     onChange={(e) => {
                                                                         const newChecked = { ...form.luChecked, [lu.id]: e.target.checked };
-                                                                        setPlotForms(prev => prev.map((f, idx) => idx === i ? { ...f, luChecked: newChecked } : f));
-                                                                        onLandUseChange?.(newChecked);
-                                                                        onMapPlotSelected?.(i);
+                                                                        setPlotForms(prev => {
+                                                                            const updated = prev.map((f, idx) => idx === i ? { ...f, luChecked: newChecked } : f);
+                                                                            const allChecked: Record<number, Record<string, boolean>> = {};
+                                                                            updated.forEach((f, idx) => { allChecked[idx] = f.luChecked; });
+                                                                            setTimeout(() => onLandUseChange?.(allChecked, i), 0);
+                                                                            return updated;
+                                                                        });
                                                                     }}
                                                                 />
                                                                 <div style={{ width: 12, height: 12, borderRadius: 2, backgroundColor: lu.color, flexShrink: 0 }} />
                                                                 <span style={{ flex: 1, color: "#0f172a", fontWeight: isChecked ? 600 : 400 }}>{lu.label}</span>
                                                                 <span style={{ color: isChecked ? lu.color : "#64748b", fontSize: 12, fontWeight: 700 }}>
                                                                     {hasArea ? `${realData.rai.toFixed(2)} ไร่` : "0.00 ไร่"}
-                                                                    <span style={{ opacity: 0.7, fontSize: 11 }}> ({hasArea ? realData.pct : 0}%)</span>
+                                                                    {hasArea && (
+                                                                        <span style={{ opacity: 0.7, fontSize: 11 }}> ({realData.pct}%)</span>
+                                                                    )}
                                                                 </span>
                                                             </label>
                                                         );
@@ -1445,20 +1522,26 @@ export function ParcelResultsPanel({
                                                 const plotLUData = plotsLuRealData[i] || {};
                                                 const activeLeafIds: string[] = [];
                                                 
-                                                Object.keys(plotLUData).forEach(k => {
+                                                const allFormKeys = Object.keys(form.luChecked || {});
+                                                const allDataKeys = Object.keys(plotLUData);
+                                                const allKeys = new Set([...allDataKeys, ...allFormKeys]);
+                                                
+                                                allKeys.forEach(k => {
+                                                    if (k === "A") return;
                                                     const isSubA = k.startsWith("A") && k !== "A";
-                                                    const isTopLevelNotA = k !== "A" && !k.startsWith("A");
+                                                    const isTopLevel = !k.startsWith("A");
                                                     
                                                     if (isSubA) {
                                                         const isChecked = k === "A302" || !!form.luChecked?.[k];
                                                         if (isChecked) activeLeafIds.push(k);
-                                                    } else if (isTopLevelNotA) {
+                                                    } else if (isTopLevel) {
                                                         const isChecked = !!form.luChecked?.[k];
                                                         if (isChecked) activeLeafIds.push(k);
                                                     }
                                                 });
                                                 
-                                                if (plotLUData["A"] && Object.keys(plotLUData).filter(k => k.startsWith("A") && k !== "A").length === 0) {
+                                                const hasCheckedA = activeLeafIds.some(id => id.startsWith("A"));
+                                                if (!hasCheckedA && plotLUData["A"]) {
                                                     activeLeafIds.push("A");
                                                 }
 
