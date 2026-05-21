@@ -12,8 +12,8 @@ export interface PlantationPolygon {
     rubber_clone?: string | null;
     tree_count?: number | null;
     spacing_system?: string | null;
-    land_use_types?: string[];
-    plantStatus?: string;
+    selected_lu_classes?: string[];
+    project_type?: string;
 }
 
 export interface StatusMessage {

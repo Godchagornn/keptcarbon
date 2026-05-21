@@ -914,8 +914,8 @@ export function ParcelResultsPanel({
                 rubber_clone: (form.variety && SUPPORTED_CLONES.includes(form.variety)) ? form.variety : null,
                 tree_count: form.treeCount ? (parseInt(form.treeCount) || null) : null,
                 spacing_system: form.spacing || null,
-                land_use_types: Object.entries(form?.luChecked || {}).filter(([, on]) => on).map(([cls]) => cls),
-                plantStatus: form?.plantStatus || undefined,
+                selected_lu_classes: Object.entries(form?.luChecked || {}).filter(([, on]) => on).map(([cls]) => cls),
+                project_type: form?.plantStatus || undefined,
             });
         }
 
