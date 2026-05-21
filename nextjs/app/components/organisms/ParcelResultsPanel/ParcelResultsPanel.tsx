@@ -39,7 +39,7 @@ type ForecastYr = 3 | 5 | 7;
 type SubStep = "form" | "carbon" | "save";
 
 interface PlotFormData {
-    plantStatus: "new" | "old" | "";
+    plantStatus: "replanting" | "existing" | "";
     plantYear: string;
     treeCount: string;
     variety: string;
@@ -787,13 +787,13 @@ export function ParcelResultsPanel({
                             ? savedLU
                             : { A: true, A302: true };
 
-                        let initialStatus: "new" | "old" | "" = "";
+                        let initialStatus: "replanting" | "existing" | "" = "";
                         if (props.plantYearBE) {
                             const yStr = String(props.plantYearBE);
                             if (NEW_YEAR_OPTIONS.includes(yStr)) {
-                                initialStatus = "new";
+                                initialStatus = "replanting";
                             } else if (OLD_YEAR_OPTIONS.includes(yStr)) {
-                                initialStatus = "old";
+                                initialStatus = "existing";
                             }
                         }
 
@@ -914,8 +914,12 @@ export function ParcelResultsPanel({
                 rubber_clone: (form.variety && SUPPORTED_CLONES.includes(form.variety)) ? form.variety : null,
                 tree_count: form.treeCount ? (parseInt(form.treeCount) || null) : null,
                 spacing_system: form.spacing || null,
+                land_use_types: Object.entries(form?.luChecked || {}).filter(([, on]) => on).map(([cls]) => cls),
+                plantStatus: form?.plantStatus || undefined,
             });
         }
+
+        console.log("[CARBON] polygons payload:", JSON.stringify(polygons, null, 2));
 
         if (polygons.length === 0) {
             setCarbonErr("ไม่พบขอบเขตพื้นที่ที่สามารถประมวลผลได้");
@@ -1323,15 +1327,15 @@ export function ParcelResultsPanel({
                                                 <i className="bi bi-info-circle" style={{ color: "#10b981" }} /> สถานะแปลง <span style={{ color: "#ef4444" }}>*</span>
                                             </div>
                                             <div style={{ display: "flex", gap: 16 }}>
-                                                <div onClick={() => { updateForm(i, "plantStatus", "new"); updateForm(i, "plantYear", String(CURRENT_BE)); onProjectTypeChange?.("replanting"); }} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, cursor: "pointer", userSelect: "none" }}>
-                                                    <div style={{ width: 18, height: 18, borderRadius: "50%", border: "2px solid", borderColor: form.plantStatus === "new" ? "#10b981" : "#cbd5e1", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, transition: "all 0.2s" }}>
-                                                        {form.plantStatus === "new" && <div style={{ width: 10, height: 10, borderRadius: "50%", background: "#10b981" }} />}
+                                                <div onClick={() => { updateForm(i, "plantStatus", "replanting"); updateForm(i, "plantYear", String(CURRENT_BE)); onProjectTypeChange?.("replanting"); }} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, cursor: "pointer", userSelect: "none" }}>
+                                                    <div style={{ width: 18, height: 18, borderRadius: "50%", border: "2px solid", borderColor: form.plantStatus === "replanting" ? "#10b981" : "#cbd5e1", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, transition: "all 0.2s" }}>
+                                                        {form.plantStatus === "replanting" && <div style={{ width: 10, height: 10, borderRadius: "50%", background: "#10b981" }} />}
                                                     </div>
                                                     เริ่มปลูก
                                                 </div>
-                                                <div onClick={() => { updateForm(i, "plantStatus", "old"); updateForm(i, "plantYear", ""); onProjectTypeChange?.("existing"); }} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, cursor: "pointer", userSelect: "none" }}>
-                                                    <div style={{ width: 18, height: 18, borderRadius: "50%", border: "2px solid", borderColor: form.plantStatus === "old" ? "#10b981" : "#cbd5e1", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, transition: "all 0.2s" }}>
-                                                        {form.plantStatus === "old" && <div style={{ width: 10, height: 10, borderRadius: "50%", background: "#10b981" }} />}
+                                                <div onClick={() => { updateForm(i, "plantStatus", "existing"); updateForm(i, "plantYear", ""); onProjectTypeChange?.("existing"); }} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, cursor: "pointer", userSelect: "none" }}>
+                                                    <div style={{ width: 18, height: 18, borderRadius: "50%", border: "2px solid", borderColor: form.plantStatus === "existing" ? "#10b981" : "#cbd5e1", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, transition: "all 0.2s" }}>
+                                                        {form.plantStatus === "existing" && <div style={{ width: 10, height: 10, borderRadius: "50%", background: "#10b981" }} />}
                                                     </div>
                                                     ปลูกมาแล้ว
                                                 </div>
@@ -1379,7 +1383,7 @@ export function ParcelResultsPanel({
                                                     disabled={!form.plantStatus}
                                                 >
                                                     <option value="">— เลือกปีที่ปลูก —</option>
-                                                    {(form.plantStatus === "new" ? NEW_YEAR_OPTIONS : form.plantStatus === "old" ? OLD_YEAR_OPTIONS : []).map(y => <option key={y} value={y}>{y}</option>)}
+                                                    {(form.plantStatus === "replanting" ? NEW_YEAR_OPTIONS : form.plantStatus === "existing" ? OLD_YEAR_OPTIONS : []).map(y => <option key={y} value={y}>{y}</option>)}
                                                 </select>
                                             </div>
                                             <div className="prp-field-group">
@@ -1436,8 +1440,8 @@ export function ParcelResultsPanel({
                                             <div style={{ display: "flex", flexDirection: "column", gap: 10, fontSize: 13 }}>
                                                 {(() => {
                                                     const plotLUData = plotsLuRealData[i] || {};
-                                                    const isNew = form.plantStatus === "new";
-                                                    const isOld = form.plantStatus === "old";
+                                                    const isNew = form.plantStatus === "replanting";
+                                                    const isOld = form.plantStatus === "existing";
 
                                                     // Behavior differs by plantStatus:
                                                     // replanting: A, M, W, F, A-sub checkable (U displayOnly, A302 fixed)
