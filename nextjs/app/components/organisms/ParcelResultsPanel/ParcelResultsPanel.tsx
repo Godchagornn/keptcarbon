@@ -1996,9 +1996,11 @@ export function ParcelResultsPanel({
                                                         แปลงที่ {i + 1} ({p.areaRai.toFixed(2)} ไร่)
                                                     </div>
                                                     <div style={{ display: "flex", flexDirection: "column", gap: 5, fontSize: 13, color: "#64748b" }}>
+                                                        {(f.plantYear || f.variety || f.treeCount || f.spacing) && (
                                                         <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-                                                            <div>• ปีที่ปลูกที่ใช้ประมวลผล: <strong>พ.ศ. {crInfo.plantYearBE}</strong></div>
+                                                            {f.plantYear && <div>• กรอกข้อมูลเอง: <strong>พ.ศ. {crInfo.plantYearBE}</strong></div>}
                                                         </div>
+                                                        )}
                                                         {(f.variety || f.treeCount || f.spacing) && (
                                                         <div style={{ display: "flex", flexDirection: "column", gap: 3, marginTop: 2 }}>
                                                             {f.variety && <div>• พันธุ์ยาง: {crInfo.variety}</div>}
