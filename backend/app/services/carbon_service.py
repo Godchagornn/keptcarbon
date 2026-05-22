@@ -19,7 +19,8 @@ from app.core.constants import (
     GROWTH_MODEL_YEAR,
     MAX_TREE_AGE,
     MEAN_CUT_TREE_AGE,
-    MIX_TREE_PROPORTION
+    MIX_TREE_PROPORTION,
+    TREE_AGE_HOMOLOGOUS_THRESHOLD
 )
 
 class CarbonService:
@@ -64,12 +65,16 @@ class CarbonService:
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Failed to load lookup file: {str(e)}")
 
-        current_year = datetime.now().year
+        if poly_data.get("project_type") == "existing":
+            start_year = datetime.now().year
+        else:
+            start_year = poly_data.get("year_of_planting")
+
         projections = []
 
         # Using max() with a generator expression
         max_age = max(cohort['age'] for cohort in cohorts)
-        limit_year = current_year + (GROWTH_MODEL_YEAR -  max_age) # Filter threshold
+        limit_year = start_year + (GROWTH_MODEL_YEAR -  max_age) # Filter threshold
         print(f"Max cohort age: {max_age}, Profile limit year: {limit_year}")
 
         # Initialize baseline variables before entering the loop
@@ -80,7 +85,7 @@ class CarbonService:
 
         for year_offset in range(0, GROWTH_MODEL_YEAR):
 
-            target_year = current_year + year_offset
+            target_year = start_year + year_offset
 
             if target_year > limit_year:
                 break # Exit the loop once pass year threshold
@@ -159,7 +164,6 @@ class CarbonService:
     async def get_carbon_profile(self, poly_data) -> dict:
         current_calendar_year = datetime.now().year
 
-
         print(f"Received polygon data for carbon profile generation: {poly_data}")
 
         # Step 1: Determine province code
@@ -192,18 +196,42 @@ class CarbonService:
         print(f"Year counts for polygon {poly_data['id']}: {poly_data['_cached_year_counts']}")
 
         if poly_data.get("year_of_planting") is not None:
-            # User input year of planting is available — use it directly to calculate age and generate profile
-            age = current_calendar_year - poly_data["year_of_planting"]
 
-            planning_year_info = self.age_map_svc.get_plantation_year_of_planting_info(poly_data)
-            print(f"Planning year info: {planning_year_info}")
+            if poly_data.get("project_type") == "existing":
+                # User input year of planting is available — use it directly to calculate age and generate profile
+                age = current_calendar_year - poly_data["year_of_planting"]
 
-            tree_info = self.tree_svc.get_tree_count_user_input(poly_data)
-            cohorts = [{'age': age, 'tree_count': tree_info['tree_count']}]
+                planning_year_info = self.age_map_svc.get_plantation_year_of_planting_info(poly_data)
+                print(f"Planning year info: {planning_year_info}")
 
-            profile = self.generate_carbon_profile(poly_data, cohorts)
+                tree_info = self.tree_svc.get_tree_count_user_input(poly_data)
+                
+                cohorts = [{"age": age, 
+                            "pixel_count": None,
+                            "proportion": 1, 
+                            "tree_count": tree_info['tree_count']}
+                        ]
 
-            message_flag = "CALCULATED" if tree_info['is_calculated'] else "RELIABLE"
+                profile = self.generate_carbon_profile(poly_data, cohorts)
+
+                message_flag = "CALCULATED" if tree_info['is_calculated'] else "RELIABLE"
+
+            else: # replanting
+                # start at age 0
+                age = 0
+                planning_year_info = ""
+
+                tree_info = self.tree_svc.get_tree_count_user_input(poly_data)
+                
+                cohorts = [{"age": age, 
+                            "pixel_count": None,
+                            "proportion": 1, 
+                            "tree_count": tree_info['tree_count']}
+                        ]
+
+                profile = self.generate_carbon_profile(poly_data, cohorts)
+
+                message_flag = "CALCULATED" if tree_info['is_calculated'] else "RELIABLE"
 
             return {
                 "polygon_id": poly_data["id"],
@@ -234,31 +262,68 @@ class CarbonService:
                     }
                 }
             }
+            
+
         else:
             print("Error: No user input year of planting found.")
             
             cohorts = self.age_map_svc.get_plantation_age_cohorts(poly_data)
             print(f"Extracted age cohorts: {cohorts}")
 
-            # Identify undetermined entries where age equates to the current calendar year
-            cohorts_with_null_age = [c for c in cohorts if c['age'] > MAX_TREE_AGE]
-            print(f"Cohorts with null age: {cohorts_with_null_age}")
+            # Find the dictionary containing the maximum proportion value
+            dominant_cohort = max(cohorts, key=lambda c: c['proportion'])
+            
+            highest_proportion = dominant_cohort['proportion']
+            highest_proportion_age = dominant_cohort['age']
 
-            reliable_mgs_add = ""
-            if cohorts_with_null_age:
-                reliable_mgs_add = " (NOTE: EXCLUDE SOME PIXELS WITH UNDETERMINED PLANTING YEAR AND/OR IMPLAUSIBLY OLD AGE DUE TO NOISE IN RASTER.)"
-                # filter out unreliable cohorts with age > MAX_TREE_AGE, which are likely to be pixels with 
-                # undetermined planting year (age=0) or implausibly old age due to raster noise  
-                # 1. Clean out completely impossible ages beyond physiological limits (e.g., > 28 years) 
-                cohorts = [c for c in cohorts if c['age'] <= MAX_TREE_AGE]
-                # Delete a cohort only if it is BOTH old AND has a small proportion.
-                # 2. Keep it if it's young OR if it meets the minimum threshold size
-                cohorts = [
-                    c for c in cohorts 
-                    if c['age'] <= MEAN_CUT_TREE_AGE or c['proportion'] >= MIX_TREE_PROPORTION
-                ]
+            # Unknow year of planting is highest propotion
+            if highest_proportion_age > MAX_TREE_AGE: 
+                return {
+                    "polygon_id": poly_data["id"],
+                    "status": {
+                        "status": "error", 
+                        "status_code": "E04", 
+                        "message": (
+                                "CANNOT GENERATE CARBON PROFILE. MAJORITY OF UNIDENTIFIED YEAR OF PLANTING FOUND, "
+                                "USER-INPUT YEAR OF PLANTING IS REQUIRED."
+                            )
+                    },
+                    "carbon_profile": None,
+                    "estimated_parameters": None
+                }
+
+            if highest_proportion > TREE_AGE_HOMOLOGOUS_THRESHOLD:
+                
+
+                total_tree_count = sum((cohort.get('tree_count') or 0) for cohort in cohorts)
+
+                cohorts = [{"age": age, 
+                            "pixel_count": None,
+                            "proportion": 1, 
+                            "tree_count": tree_info['tree_count']}
+                        ]
+
+            else: # High age VARIABILITY found
+                # Identify undetermined entries where age equates to the current calendar year
+                cohorts_with_null_age = [c for c in cohorts if c['age'] > MAX_TREE_AGE]
+                print(f"Cohorts with null age: {cohorts_with_null_age}")
+
+                reliable_mgs_add = ""
+                if cohorts_with_null_age:
+                    reliable_mgs_add = " (NOTE: EXCLUDE SOME PIXELS WITH UNDETERMINED PLANTING YEAR AND/OR IMPLAUSIBLY OLD AGE DUE TO NOISE IN RASTER.)"
+                    # filter out unreliable cohorts with age > MAX_TREE_AGE, which are likely to be pixels with 
+                    # undetermined planting year (age=0) or implausibly old age due to raster noise  
+                    # 1. Clean out completely impossible ages beyond physiological limits (e.g., > 28 years) 
+                    cohorts = [c for c in cohorts if c['age'] <= MAX_TREE_AGE]
+                    # Delete a cohort only if it is BOTH old AND has a small proportion.
+                    # 2. Keep it if it's young OR if it meets the minimum threshold size
+                    cohorts = [
+                        c for c in cohorts 
+                        if c['age'] <= MEAN_CUT_TREE_AGE or c['proportion'] >= MIX_TREE_PROPORTION
+                    ]
+                
+            
             print(f"Final cohorts used for profile generation: {cohorts}")
-
             # Sum the 'tree_count' from all cohorts
             # Safe calculation that falls back to 0 if 'tree_count' is None or missing
             total_tree_count = sum((cohort.get('tree_count') or 0) for cohort in cohorts)

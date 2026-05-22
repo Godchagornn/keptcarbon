@@ -30,7 +30,7 @@ See [api.http](api.http) for runnable request examples.
 |---|---|---|---|
 | `id` | string | yes | Unique identifier from the frontend map |
 | `geometry` | GeoJSON | yes | Polygon or MultiPolygon (EPSG:4326) |
-| `project_type` | string | no | e.g. `"replanting"`, `"existing"` |
+| `project_type` | string | yes | e.g. `"replanting"`, `"existing"` |
 | `year_of_planting` | int | no | CE year — extracted from raster if null |
 | `rubber_clone` | string | no | `"RRIM 600"` (default) or `"RRIT 251"` |
 | `tree_count` | int | no | User-defined count — calculated from area + spacing if null |
@@ -117,7 +117,7 @@ See [api.http](api.http) for runnable request examples.
 |---|---|---|---|
 | `id` | string | yes | Unique identifier |
 | `geometry` | GeoJSON | yes | Polygon or MultiPolygon (EPSG:4326) |
-| `project_type` | string | no | e.g. `"replanting"`, `"existing"` |
+| `project_type` | string | yes | e.g. `"replanting"`, `"existing"` |
 | `output_crs` | string | no | CRS for returned geometry. `"EPSG:4326"` (default) = WGS84, `"EPSG:32647"` = UTM Zone 47N (metres) |
 
 #### `POST /api/v1/plantation-info` — response
