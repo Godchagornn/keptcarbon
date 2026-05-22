@@ -24,9 +24,9 @@
                 ]
             }, 
         "selected_lu_classes": ["A302", "A204"],
-        "year_of_planting": 2010,
-        "spacing_system": "2.5x8",
-        "rubber_clone": "RRIM 600",
-        "tree_count": 33300
+        "year_of_planting": null,
+        "spacing_system": null,
+        "rubber_clone": null,
+        "tree_count": null
     }
 ]
