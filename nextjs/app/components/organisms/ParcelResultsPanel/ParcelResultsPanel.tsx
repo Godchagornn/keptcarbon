@@ -513,9 +513,15 @@ function convertYearNoteToBE(note: string): string {
 
 function EstimatedParamsCard({ params }: { params: EstimatedParameters }) {
     const yearParam = params.year_of_planting;
-    const isUserInput = yearParam.source === "user input";
-    const usedYearBE = typeof yearParam.value === "number" ? yearParam.value + 543 : null;
     const yearNotes = (yearParam.note ?? []).slice(0, 5);
+
+    let usedYearBE: number | null = null;
+    if (typeof yearParam.value === "number") {
+        usedYearBE = yearParam.value + 543;
+    } else if (Array.isArray(yearParam.value) && yearParam.value.length > 0) {
+        const m = yearParam.value[0].match(/^(\d{4})/);
+        if (m) usedYearBE = parseInt(m[1]) + 543;
+    }
 
     return (
         <div style={{ marginTop: 8, paddingTop: 8, borderTop: "1px dashed rgba(14,165,233,0.2)", fontSize: 13 }}>
@@ -526,14 +532,11 @@ function EstimatedParamsCard({ params }: { params: EstimatedParameters }) {
                 {/* Year used */}
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", color: "#475569" }}>
                     <span>• ปีที่ปลูก (ใช้คำนวณ)</span>
-                    <span style={{ display: "flex", alignItems: "center", gap: 4, color: "#0f172a", fontWeight: 700 }}>
+                    <span style={{ color: "#0f172a", fontWeight: 700 }}>
                         {usedYearBE ? `พ.ศ. ${usedYearBE}` : "—"}
-                        <span style={{ fontSize: 11, padding: "2px 6px", borderRadius: 4, background: isUserInput ? "rgba(16,185,129,0.1)" : "rgba(14,165,233,0.1)", color: isUserInput ? "#059669" : "#0284c7", fontWeight: 700 }}>
-                            {isUserInput ? "ระบุเอง" : "จากดาวเทียม"}
-                        </span>
                     </span>
                 </div>
-                {/* Year distribution from raster */}
+                {/* Year distribution from raster — top 5 */}
                 {yearNotes.length > 0 && (
                     <div style={{ marginLeft: 8, marginTop: 2, padding: "6px 10px", background: "rgba(14,165,233,0.04)", borderRadius: 6, border: "1px solid rgba(14,165,233,0.12)" }}>
                         <div style={{ fontSize: 12, color: "#64748b", fontWeight: 700, marginBottom: 4 }}>
@@ -551,8 +554,7 @@ function EstimatedParamsCard({ params }: { params: EstimatedParameters }) {
                 {/* Clone, tree count, spacing */}
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "4px 8px", marginTop: 2, color: "#475569" }}>
                     <div>• พันธุ์ยาง: <strong style={{ color: "#0f172a" }}>{String(params.rubber_clone.value)}</strong></div>
-                    <div>• จำนวนต้น: <strong style={{ color: "#0f172a" }}>{Number(params.tree_count.value).toLocaleString("th-TH")}</strong> ต้น</div>
-                    <div style={{ gridColumn: "1 / -1" }}>• ระยะปลูก: <strong style={{ color: "#0f172a" }}>{String(params.spacing_system.value)}</strong></div>
+                    <div style={{ gridColumn: "1 / -1" }}>• ระยะปลูก: <strong style={{ color: "#0f172a" }}>{String(params.spacing_system.value)}</strong> (จำนวนต้น: <strong style={{ color: "#0f172a" }}>{Number(params.tree_count.value).toLocaleString("th-TH")}</strong> ต้น)</div>
                 </div>
             </div>
         </div>
@@ -938,22 +940,12 @@ export function ParcelResultsPanel({
             const backendYearBE = plots[idx]?.plantYearBE || 0;
             const userYearBE = form.plantYear ? parseInt(form.plantYear) : 0;
 
-            let finalPlantYearBE = 0;
-
-            if (userYearBE > 0) {
-                finalPlantYearBE = userYearBE;
-            } else {
-                if (backendYearBE > 0) {
-                    finalPlantYearBE = backendYearBE;
-                } else {
-                    finalPlantYearBE = CURRENT_BE_NOW - 5;
-                }
-            }
+            const finalPlantYearBE = userYearBE > 0 ? userYearBE : (backendYearBE > 0 ? backendYearBE : 0);
 
             polygons.push({
                 id: `plot-${idx}`,
                 geometry: combinedGeom,
-                year_of_planting: finalPlantYearBE - 543, // Convert to CE for Backend API
+                year_of_planting: finalPlantYearBE > 0 ? finalPlantYearBE - 543 : null, // null = ให้ backend ดึงจาก raster
                 rubber_clone: (form.variety && SUPPORTED_CLONES.includes(form.variety)) ? form.variety : null,
                 tree_count: form.treeCount ? (parseInt(form.treeCount) || null) : null,
                 spacing_system: form.spacing || null,
@@ -1011,17 +1003,15 @@ export function ParcelResultsPanel({
                 if (userYearBE > 0) {
                     finalPlantYearBE = userYearBE;
                     yearUsedDetails = `ใช้ตามที่คุณระบุ (พ.ศ. ${userYearBE})`;
+                } else if (backendYearBE > 0) {
+                    finalPlantYearBE = backendYearBE;
+                    yearUsedDetails = `ใช้ปีจากดาวเทียมที่ตรวจพบ (พ.ศ. ${backendYearBE})`;
                 } else {
-                    if (backendYearBE > 0) {
-                        finalPlantYearBE = backendYearBE;
-                        yearUsedDetails = `ใช้ปีจากดาวเทียมที่ตรวจพบ (พ.ศ. ${backendYearBE})`;
-                    } else {
-                        finalPlantYearBE = CURRENT_BE_NOW - 5;
-                        yearUsedDetails = `ใช้ค่าเริ่มต้นระบบ (พ.ศ. ${finalPlantYearBE})`;
-                    }
+                    finalPlantYearBE = 0;
+                    yearUsedDetails = "";
                 }
 
-                const startAge = CURRENT_BE_NOW - finalPlantYearBE;
+                const startAge = finalPlantYearBE > 0 ? CURRENT_BE_NOW - finalPlantYearBE : 0;
                 const userTrees = form.treeCount ? parseInt(form.treeCount) : 0;
                 const finalTrees = userTrees > 0 ? userTrees : Math.round(totalAreaRai * 76);
 
