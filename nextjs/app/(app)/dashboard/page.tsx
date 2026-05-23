@@ -623,14 +623,14 @@ export default function DashboardPage() {
               <h1 style={{ fontSize: isMobile ? 24 : 34, fontWeight: 900, color: "#064e3b", margin: "0 0 8px", letterSpacing: -0.8, lineHeight: 1.15 }}>
                 ฐานข้อมูลยางพาราจังหวัดระยอง
               </h1>
-              <p style={{ fontSize: isMobile ? 15 : 17, color: "#64748b", margin: 0, fontWeight: 500 }}>
-                ข้อมูลการใช้ประโยชน์ที่ดิน (LU) กรมพัฒนาที่ดิน
+              <div style={{ fontSize: isMobile ? 15 : 17, color: "#64748b", margin: 0, fontWeight: 500, display: "flex", flexDirection: isMobile ? "column" : "row", alignItems: isMobile ? "flex-start" : "center", gap: isMobile ? 8 : 6 }}>
+                <span>ข้อมูลการใช้ประโยชน์ที่ดิน (LU) กรมพัฒนาที่ดิน</span>
                 {luDataYear ? (
-                    <span style={{ marginLeft: 6, background: "rgba(5,150,105,0.1)", border: "1px solid rgba(5,150,105,0.2)", borderRadius: 6, padding: "2px 8px", fontSize: isMobile ? 13 : 14, fontWeight: 700, color: "#059669" }}>
+                    <span style={{ background: "rgba(5,150,105,0.1)", border: "1px solid rgba(5,150,105,0.2)", borderRadius: 6, padding: "2px 8px", fontSize: isMobile ? 13 : 14, fontWeight: 700, color: "#059669", whiteSpace: "nowrap" }}>
                     ปี พ.ศ. {luDataYear}
                   </span>
                 ) : null}
-              </p>
+              </div>
             </div>
           </div>
         </div>

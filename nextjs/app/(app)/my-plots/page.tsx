@@ -611,7 +611,7 @@ function PlotCard({ plot, index, onDelete, onEdit, expanded, onToggle, isMobile 
                 ? (i % 2 === 0 ? "1px solid #f1f5f9" : "none")
                 : (i < 5 ? "1px solid #f1f5f9" : "none"),
               borderBottom: isMobile && i < 4 ? "1px solid #f1f5f9" : "none",
-              gridColumn: (isMobile && i === 5) ? "1 / -1" : "auto",
+              gridColumn: "auto",
               display: "flex", flexDirection: "column", gap: 7
             }}
           >
