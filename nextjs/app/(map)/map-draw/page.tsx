@@ -91,7 +91,7 @@ function MapDrawContent() {
   const [isPanelOpen, setIsPanelOpen] = useState(false);
 
   // Area Validation State
-  const [areaError, setAreaError] = useState<{ rai: number; sqm: number } | null>(null);
+  const [areaError, setAreaError] = useState<{ rai: number; sqm: number; tooSmall?: boolean } | null>(null);
 
   // Drawn boundary geometry (set when search is confirmed)
   const [drawnGeometry, setDrawnGeometry] = useState<GeoJSON.Geometry | null>(null);
@@ -1221,7 +1221,7 @@ function MapDrawContent() {
 
     const totalRai = totalDrawnArea / 1600;
     if (totalRai < 1) {
-      setAreaError({ rai: totalRai, sqm: totalDrawnArea });
+      setAreaError({ rai: totalRai, sqm: totalDrawnArea, tooSmall: true });
       return;
     }
 
@@ -1463,7 +1463,7 @@ function MapDrawContent() {
       }
       const totalRai = totalSqm / 1600;
       if (totalRai < 1) {
-        setAreaError({ rai: totalRai, sqm: totalSqm });
+        setAreaError({ rai: totalRai, sqm: totalSqm, tooSmall: true });
       } else {
         setAreaError(null);
       }
@@ -2043,13 +2043,19 @@ function MapDrawContent() {
               <i className="bi bi-exclamation-triangle-fill" />
             </div>
             <div className="mds-area-popup-content">
-              <h3>พื้นที่แปลงใหญ่เกินไป</h3>
+              <h3>{areaError.tooSmall ? "พื้นที่แปลงเล็กเกินไป" : "พื้นที่แปลงใหญ่เกินไป"}</h3>
               <p>
                 ขนาดแปลงที่วาดคือ <strong>{areaError.rai.toFixed(2)} ไร่</strong> ({Math.round(areaError.sqm).toLocaleString()} ตร.ม.)
-                ซึ่งเกินกว่าเกณฑ์สูงสุด <strong>500 ไร่</strong>
+                {areaError.tooSmall
+                  ? <> ซึ่งน้อยกว่าเกณฑ์ขั้นต่ำ <strong>1 ไร่</strong></>
+                  : <> ซึ่งเกินกว่าเกณฑ์สูงสุด <strong>500 ไร่</strong></>
+                }
               </p>
               <div className="mds-area-popup-hint">
-                กรุณาปรับลดขอบเขตแปลง หรือแบ่งเป็นหลายแปลง
+                {areaError.tooSmall
+                  ? "กรุณาวาดแปลงใหม่ให้มีพื้นที่อย่างน้อย 1 ไร่"
+                  : "กรุณาปรับลดขอบเขตแปลง หรือแบ่งเป็นหลายแปลง"
+                }
               </div>
             </div>
             <button className="mds-area-popup-close" onClick={() => setAreaError(null)}>
