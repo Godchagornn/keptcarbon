@@ -382,7 +382,7 @@ function AgeBarChart({ age, conf, trees, isMobile }: { age: number; conf: number
                                         อายุ {a} ปี · {pct}%
                                     </text>
                                     <text x={ttLeft + ttW / 2} y={ttTop + 38} textAnchor="middle" fontSize={15} fill="#fff" fontWeight="800">
-                                        {co2Val > 0 ? `${co2Val.toLocaleString("th-TH", { maximumFractionDigits: 0 })} tCO₂` : "—"}
+                                        {co2Val > 0 ? `${Math.floor(co2Val).toLocaleString("th-TH")} tCO₂` : "—"}
                                     </text>
                                     <polygon points={`${cx - 5},${ttTop + ttH} ${cx + 5},${ttTop + ttH} ${cx},${ttTop + ttH + 6}`} fill="#064e3b" opacity={0.95} />
                                 </g>
@@ -481,10 +481,10 @@ function ForecastChart({ pts, isMobile }: { pts: Array<{ yearBE: number; co2: nu
 
             {/* Y axis labels */}
             <text x={PL + iW + 8} y={PT + 4} fontSize={isMobile ? 12 : 11} fill="#6b9e7e" textAnchor="start">
-                {Math.round(maxV).toLocaleString()}
+                {Math.floor(maxV).toLocaleString()}
             </text>
             <text x={PL + iW + 8} y={PT + iH + 4} fontSize={isMobile ? 12 : 11} fill="#6b9e7e" textAnchor="start">
-                {Math.round(minV).toLocaleString()}
+                {Math.floor(minV).toLocaleString()}
             </text>
 
             {/* Hover tooltip */}
@@ -499,7 +499,7 @@ function ForecastChart({ pts, isMobile }: { pts: Array<{ yearBE: number; co2: nu
                             พ.ศ. {hp.yearBE}
                         </text>
                         <text x={ttX + (ttW + 10) / 2} y={ttY + 34} textAnchor="middle" fontSize={13} fill="#ffffff" fontWeight="700">
-                            {hp.co2.toLocaleString("th-TH", { maximumFractionDigits: 0 })} tCO₂
+                            {Math.floor(hp.co2).toLocaleString("th-TH")} tCO₂
                         </text>
                         <polygon
                             points={`${hp.x - 5},${ttY + ttH} ${hp.x + 5},${ttY + ttH} ${hp.x},${ttY + ttH + 6}`}
@@ -812,32 +812,16 @@ export function ParcelResultsPanel({
     useEffect(() => {
         setPlotForms(prev => {
             let changed = false;
-            const next = prev.map((form, idx) => {
-                const detectedLU = plotsLuRealData[idx] || {};
+            const next = prev.map((form) => {
                 if (form.plantStatus === "replanting") {
-                    // replanting: include all non-U detected classes
-                    const detectedClasses = Object.keys(detectedLU).filter(
-                        k => k !== "U" && detectedLU[k].rai > 0
-                    );
-                    if (detectedClasses.length === 0) return form;
-                    const newChecked = { ...form.luChecked };
-                    let anyNew = false;
-                    detectedClasses.forEach(cls => {
-                        if (!newChecked[cls]) { newChecked[cls] = true; anyNew = true; }
-                    });
-                    if (!anyNew) return form;
+                    // replanting: A and A302 are auto-checked, other classes must be checked manually
+                    if (form.luChecked.A && form.luChecked.A302) return form;
                     changed = true;
-                    return { ...form, luChecked: newChecked };
+                    return { ...form, luChecked: { ...form.luChecked, A: true, A302: true } };
                 } else if (form.plantStatus === "existing") {
-                    // existing: include all A sub-types and F
+                    // existing: only A302 is auto-checked, other sub-types must be checked manually
                     const newChecked: Record<string, boolean> = { ...form.luChecked, A: true, A302: true };
-                    let anyNew = false;
-                    Object.keys(detectedLU).forEach(cls => {
-                        if (detectedLU[cls].rai > 0 && ((cls.startsWith("A") && cls !== "U") || cls === "F")) {
-                            if (!newChecked[cls]) { newChecked[cls] = true; anyNew = true; }
-                        }
-                    });
-                    if (!anyNew) return form;
+                    if (newChecked.A === form.luChecked.A && newChecked.A302 === form.luChecked.A302) return form;
                     changed = true;
                     return { ...form, luChecked: newChecked };
                 }
@@ -858,6 +842,7 @@ export function ParcelResultsPanel({
         if (plotForms.length === 0) return true;
         return plotForms.some(f => !f.plantStatus);
     }, [plotForms]);
+
 
     const sortedPlotIndices = useMemo(() => {
         // Newest plot always goes first (reverse index order)
@@ -910,6 +895,7 @@ export function ParcelResultsPanel({
             setCarbonErr("กรุณากรอกสถานะแปลงให้ครบทุกแปลงก่อนทำการประมวลผล");
             return;
         }
+
         setCarbonErr(null);
         setProcessingCarbon(true);
         const CURRENT_BE_NOW = new Date().getFullYear() + 543;
@@ -1454,20 +1440,11 @@ export function ParcelResultsPanel({
                                             </div>
                                             <div style={{ display: "flex", gap: 16 }}>
                                                 <div onClick={() => {
-                                                    // Auto-check all LU classes detected by backend for this replanting plot
-                                                    const detectedLU = plotsLuRealData[i] || {};
-                                                    const newLuChecked: Record<string, boolean> = { A302: true };
-                                                    Object.keys(detectedLU).forEach(cls => {
-                                                        if (cls !== "U" && detectedLU[cls].rai > 0) newLuChecked[cls] = true;
-                                                    });
-                                                    if (Object.keys(newLuChecked).filter(k => k !== "A302").length === 0) {
-                                                        newLuChecked.A = true; // fallback when LU data not yet available
-                                                    }
                                                     setPlotForms(prev => prev.map((f, idx) => idx === i ? {
                                                         ...f,
                                                         plantStatus: "replanting",
                                                         plantYear: String(CURRENT_BE),
-                                                        luChecked: newLuChecked,
+                                                        luChecked: { A: true, A302: true },
                                                     } : f));
                                                     onProjectTypeChange?.("replanting");
                                                 }} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, cursor: "pointer", userSelect: "none" }}>
@@ -1478,21 +1455,11 @@ export function ParcelResultsPanel({
                                                 </div>
                                                 <div onClick={() => {
                                                     // Auto-check A sub-types and F detected by backend for existing plots
-                                                    const detectedLU = plotsLuRealData[i] || {};
-                                                    const newLuChecked: Record<string, boolean> = { A: true, A302: true };
-                                                    Object.keys(detectedLU).forEach(cls => {
-                                                        if (detectedLU[cls].rai > 0) {
-                                                            // include all A sub-types and F
-                                                            if ((cls.startsWith("A") && cls !== "U") || cls === "F") {
-                                                                newLuChecked[cls] = true;
-                                                            }
-                                                        }
-                                                    });
                                                     setPlotForms(prev => prev.map((f, idx) => idx === i ? {
                                                         ...f,
                                                         plantStatus: "existing",
                                                         plantYear: "",
-                                                        luChecked: newLuChecked,
+                                                        luChecked: { A: true, A302: true },
                                                     } : f));
                                                     onProjectTypeChange?.("existing");
                                                 }} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, cursor: "pointer", userSelect: "none" }}>
@@ -1610,10 +1577,7 @@ export function ParcelResultsPanel({
                                                     // existing:   A fixed, F checkable, A-sub checkable (U,W,M displayOnly, A302 fixed)
                                                     const baseLU = [
                                                         { id: "U", label: "U พื้นที่ชุมชนและสิ่งปลูกสร้าง", color: "#ef4444", displayOnly: true },
-                                                        ...(isNew
-                                                            ? [{ id: "A", label: "A พื้นที่เกษตรกรรม", color: "#84cc16" }]
-                                                            : [{ id: "A", label: "A พื้นที่เกษตรกรรม", color: "#84cc16", fixed: true }]
-                                                        ),
+                                                        { id: "A", label: "A พื้นที่เกษตรกรรม", color: "#84cc16", fixed: true },
                                                         { id: "F", label: "F พื้นที่ป่าไม้", color: "#166534" },
                                                         ...(isNew
                                                             ? [{ id: "W", label: "W แหล่งน้ำ", color: "#3b82f6" }]
@@ -1999,7 +1963,7 @@ export function ParcelResultsPanel({
                             {/* Total summary */}
                             <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 6, marginBottom: 10 }}>
                                 {[
-                                    { label: "คาร์บอนรวมปัจจุบัน", val: `${Math.round(summaryTotalCo2).toLocaleString()} tCO₂`, color: "#0d9488" },
+                                    { label: "คาร์บอนรวมปัจจุบัน", val: `${Math.floor(summaryTotalCo2).toLocaleString()} tCO₂`, color: "#0d9488" },
                                 ].map(({ label, val, color }) => (
                                     <div key={label} style={{ background: "#fff", borderRadius: 10, padding: "12px 8px", textAlign: "center", border: "1px solid rgba(0,0,0,0.06)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 4 }}>
                                         <div style={{ fontSize: 12, color: "#64748b", fontWeight: 600 }}>{label}</div>
@@ -2014,7 +1978,7 @@ export function ParcelResultsPanel({
                             {/* Plot info summary */}
                             <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 6, marginBottom: 10 }}>
                                 {[
-                                    { label: "คาร์บอนปัจจุบัน", val: `${Math.round(cr.co2Now).toLocaleString()} tCO₂`, color: "#0d9488" },
+                                    { label: "คาร์บอนปัจจุบัน", val: `${Math.floor(cr.co2Now).toLocaleString()} tCO₂`, color: "#0d9488" },
                                 ].map(({ label, val, color }) => (
                                     <div key={label} style={{ background: "#fff", borderRadius: 10, padding: "12px 8px", textAlign: "center", border: "1px solid rgba(0,0,0,0.06)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 4 }}>
                                         <div style={{ fontSize: 12, color: "#64748b", fontWeight: 600 }}>{label}</div>
@@ -2095,10 +2059,7 @@ export function ParcelResultsPanel({
                                                 <div
                                                     key={i}
                                                     onClick={() => {
-                                                        if (parcelFeatures[i]) {
-                                                            onFlyTo(parcelFeatures[i]);
-                                                            onMapPlotSelected?.(i);
-                                                        }
+                                                        onMapPlotSelected?.(i);
                                                     }}
                                                     style={{
                                                         padding: "10px 12px",
