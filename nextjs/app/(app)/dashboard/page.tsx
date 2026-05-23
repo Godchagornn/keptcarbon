@@ -508,6 +508,7 @@ export default function DashboardPage() {
   const [mapBbox, setMapBbox] = useState<{ minLng: number; minLat: number; maxLng: number; maxLat: number } | null>(null);
   const [dashData, setDashData] = useState<DashboardRayongResponse | null>(null);
   const [dashDistricts, setDashDistricts] = useState<DashboardDistrict[] | null>(null);
+  const [luDataYear, setLuDataYear] = useState<number | null>(null);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -524,6 +525,7 @@ export default function DashboardPage() {
         if (!data) return;
         setMapPlots(data.mapPlots ?? []);
         setMapBbox(data.bbox ?? null);
+        if (data.luDataYear) setLuDataYear(data.luDataYear);
       })
       .catch(console.error);
   }, []);
@@ -622,7 +624,12 @@ export default function DashboardPage() {
                 ฐานข้อมูลยางพาราจังหวัดระยอง
               </h1>
               <p style={{ fontSize: isMobile ? 13 : 15, color: "#64748b", margin: 0, fontWeight: 500 }}>
-                สำรวจและวิเคราะห์แปลงยางพาราด้วยดาวเทียม · ครอบคลุม 8 อำเภอ
+                ข้อมูลการใช้ประโยชน์ที่ดิน (LU) กรมพัฒนาที่ดิน
+                {luDataYear ? (
+                  <span style={{ marginLeft: 6, background: "rgba(5,150,105,0.1)", border: "1px solid rgba(5,150,105,0.2)", borderRadius: 6, padding: "2px 8px", fontSize: isMobile ? 11 : 12, fontWeight: 700, color: "#059669" }}>
+                    ปี พ.ศ. {luDataYear}
+                  </span>
+                ) : null}
               </p>
             </div>
           </div>
