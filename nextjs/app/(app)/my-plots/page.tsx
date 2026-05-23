@@ -37,6 +37,7 @@ type SavedPlot = {
   boundaryGeojson?: unknown;
   forecast?: { yr3: number; yr5: number; yr7: number };
   carbonProfile?: BarPoint[];
+  plantStatus?: string;
 };
 
 function PlotsMapView({ plots, isMobile }: { plots: SavedPlot[], isMobile: boolean }) {
@@ -496,8 +497,11 @@ function PlotCard({ plot, index, onDelete, onEdit, expanded, onToggle, isMobile 
       ? buildBarPoints(effectiveAge, chartStartYearBE, plot.trees ?? 0, plot.spacing || "2.5x8")
       : [];
 
+  const plantStatusLabel = plot.plantStatus === "replanting" ? "เริ่มปลูกใหม่" : plot.plantStatus === "existing" ? "ปลูกมาแล้ว" : "—";
+
   const infoItems = [
     { label: "พื้นที่", val: plot.areaRai > 0 ? plot.areaRai.toFixed(2) : "—", unit: "ไร่", icon: "bi-grid-3x3", color: "#0d9488", bg: "rgba(13,148,136,0.12)" },
+    { label: "สถานะแปลง", val: plantStatusLabel, unit: "", icon: "bi-check2-circle", color: "#f59e0b", bg: "rgba(245,158,11,0.12)" },
     { label: "ปีที่ปลูก", val: plot.plantYearBE && plot.plantYearBE > 0 ? String(plot.plantYearBE) : "—", unit: "พ.ศ.", icon: "bi-calendar2-check", color: "#3b82f6", bg: "rgba(59,130,246,0.12)" },
     { label: "พันธุ์ยาง", val: plot.variety || "—", unit: "", icon: "bi-patch-check-fill", color: "#8b5cf6", bg: "rgba(139,92,246,0.12)" },
     { label: "ระยะปลูก", val: plot.spacing || "—", unit: "ม.", icon: "bi-arrows-fullscreen", color: "#f59e0b", bg: "rgba(245,158,11,0.12)" },
@@ -593,7 +597,7 @@ function PlotCard({ plot, index, onDelete, onEdit, expanded, onToggle, isMobile 
       {/* Info strip */}
       <div style={{
         display: "grid",
-        gridTemplateColumns: isMobile ? "repeat(2, 1fr)" : "repeat(5, 1fr)",
+        gridTemplateColumns: isMobile ? "repeat(2, 1fr)" : "repeat(6, 1fr)",
         borderTop: "1px solid #f1f5f9",
         borderBottom: "1px solid #f1f5f9",
         background: "#fafbfc"
@@ -605,9 +609,9 @@ function PlotCard({ plot, index, onDelete, onEdit, expanded, onToggle, isMobile 
               padding: isMobile ? "11px 14px" : "13px 16px",
               borderRight: isMobile
                 ? (i % 2 === 0 ? "1px solid #f1f5f9" : "none")
-                : (i < 4 ? "1px solid #f1f5f9" : "none"),
+                : (i < 5 ? "1px solid #f1f5f9" : "none"),
               borderBottom: isMobile && i < 4 ? "1px solid #f1f5f9" : "none",
-              gridColumn: (isMobile && i === 4) ? "1 / -1" : "auto",
+              gridColumn: (isMobile && i === 5) ? "1 / -1" : "auto",
               display: "flex", flexDirection: "column", gap: 7
             }}
           >
