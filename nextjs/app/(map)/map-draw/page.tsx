@@ -13,7 +13,6 @@ import {
   validateAndFixGeoJSON,
   detectUtmFromPrj,
   detectUtmZoneAuto,
-  truncateCoords,
   sanitizePolygonForApi,
 } from "@/lib/map-utils";
 import { getPlantationInfo } from "@/lib/carbon-api";
@@ -21,14 +20,6 @@ import { ParcelResultsPanel } from "@/app/components/organisms";
 import { useSearchParams } from "next/navigation";
 
 type Tab = "draw" | "shp";
-type NdviStatus = number | null | "loading" | "error";
-type BfastStatus = {
-  state: "idle" | "loading" | "done" | "error";
-  plantingYear?: number | null;
-  age?: number | null;
-  confidence?: number;
-  ndviLatest?: number | null;
-};
 
 function MapDrawContent() {
   const { user } = useAuth();

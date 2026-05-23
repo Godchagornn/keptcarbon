@@ -2069,41 +2069,43 @@ export function ParcelResultsPanel({
                                 <><i className="bi bi-save" /> บันทึกข้อมูลประมวลผล</>
                             )}
                         </button>
-                        <button
-                            className="prp-btn-ghost"
-                            onClick={() => onStepChange(1)}
-                            style={{
-                                flex: 1,
-                                height: "42px",
-                                padding: 0,
-                                margin: 0,
-                                boxSizing: "border-box",
-                                fontSize: "12.5px",
-                                fontWeight: 700,
-                                color: "#64748b",
-                                cursor: "pointer",
-                                background: "rgba(100, 116, 139, 0.07)",
-                                border: "1.5px solid rgba(100, 116, 139, 0.22)",
-                                borderRadius: "14px",
-                                display: "flex",
-                                alignItems: "center",
-                                justifyContent: "center",
-                                gap: "4px",
-                                transition: "all 0.2s",
-                                outline: "none",
-                                boxShadow: "none"
-                            }}
-                            onMouseOver={(e) => {
-                                e.currentTarget.style.background = "rgba(100, 116, 139, 0.14)";
-                                e.currentTarget.style.borderColor = "rgba(100, 116, 139, 0.4)";
-                            }}
-                            onMouseOut={(e) => {
-                                e.currentTarget.style.background = "rgba(100, 116, 139, 0.07)";
-                                e.currentTarget.style.borderColor = "rgba(100, 116, 139, 0.22)";
-                            }}
-                        >
-                            <i className="bi bi-house-door" style={{ fontSize: "13px" }} /> ขั้นตอนที่ 1
-                        </button>
+                        {onBack && (
+                            <button
+                                className="prp-btn-ghost"
+                                onClick={onBack}
+                                style={{
+                                    flex: 1,
+                                    height: "42px",
+                                    padding: 0,
+                                    margin: 0,
+                                    boxSizing: "border-box",
+                                    fontSize: "12.5px",
+                                    fontWeight: 700,
+                                    color: "#64748b",
+                                    cursor: "pointer",
+                                    background: "rgba(100, 116, 139, 0.07)",
+                                    border: "1.5px solid rgba(100, 116, 139, 0.22)",
+                                    borderRadius: "14px",
+                                    display: "flex",
+                                    alignItems: "center",
+                                    justifyContent: "center",
+                                    gap: "4px",
+                                    transition: "all 0.2s",
+                                    outline: "none",
+                                    boxShadow: "none"
+                                }}
+                                onMouseOver={(e) => {
+                                    e.currentTarget.style.background = "rgba(100, 116, 139, 0.14)";
+                                    e.currentTarget.style.borderColor = "rgba(100, 116, 139, 0.4)";
+                                }}
+                                onMouseOut={(e) => {
+                                    e.currentTarget.style.background = "rgba(100, 116, 139, 0.07)";
+                                    e.currentTarget.style.borderColor = "rgba(100, 116, 139, 0.22)";
+                                }}
+                            >
+                                <i className="bi bi-house-door" style={{ fontSize: "13px" }} /> ขั้นตอนที่ 1
+                            </button>
+                        )}
                     </div>
                     {isTotal ? (
                         <>
