@@ -219,7 +219,7 @@ class CarbonService:
             else: # replanting
                 # start at age 0
                 age = 0
-                planning_year_info = ""
+                planning_year_info = None
 
                 tree_info = self.tree_svc.get_tree_count_user_input(poly_data)
                 

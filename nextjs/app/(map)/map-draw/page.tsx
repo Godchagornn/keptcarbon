@@ -1357,8 +1357,7 @@ function MapDrawContent() {
 
   const handleProjectTypeChange = useCallback((type: "replanting" | "existing") => {
     setProjectType(type);
-    runPlantationInfo(type);
-  }, [runPlantationInfo]);
+  }, []);
 
   useEffect(() => {
     runPlantationInfoRef.current = runPlantationInfo;

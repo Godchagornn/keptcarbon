@@ -807,6 +807,45 @@ export function ParcelResultsPanel({
             onLandUseChange?.(allChecked, expandedIdx);
         }
     }, [currentStep, expandedIdx, plotForms, onMapPlotSelected, onLandUseChange]);
+
+    // When LU data arrives from backend, auto-check relevant LU classes per status
+    useEffect(() => {
+        setPlotForms(prev => {
+            let changed = false;
+            const next = prev.map((form, idx) => {
+                const detectedLU = plotsLuRealData[idx] || {};
+                if (form.plantStatus === "replanting") {
+                    // replanting: include all non-U detected classes
+                    const detectedClasses = Object.keys(detectedLU).filter(
+                        k => k !== "U" && detectedLU[k].rai > 0
+                    );
+                    if (detectedClasses.length === 0) return form;
+                    const newChecked = { ...form.luChecked };
+                    let anyNew = false;
+                    detectedClasses.forEach(cls => {
+                        if (!newChecked[cls]) { newChecked[cls] = true; anyNew = true; }
+                    });
+                    if (!anyNew) return form;
+                    changed = true;
+                    return { ...form, luChecked: newChecked };
+                } else if (form.plantStatus === "existing") {
+                    // existing: include all A sub-types and F
+                    const newChecked: Record<string, boolean> = { ...form.luChecked, A: true, A302: true };
+                    let anyNew = false;
+                    Object.keys(detectedLU).forEach(cls => {
+                        if (detectedLU[cls].rai > 0 && ((cls.startsWith("A") && cls !== "U") || cls === "F")) {
+                            if (!newChecked[cls]) { newChecked[cls] = true; anyNew = true; }
+                        }
+                    });
+                    if (!anyNew) return form;
+                    changed = true;
+                    return { ...form, luChecked: newChecked };
+                }
+                return form;
+            });
+            return changed ? next : prev;
+        });
+    }, [plotsLuRealData]);
     // (removed auto-collapse: expanded content stays visible when selecting status)
 
     const [carbonResults, setCarbonResults] = useState<CarbonResult[]>([]);
@@ -918,7 +957,8 @@ export function ParcelResultsPanel({
                 return checkedClasses.has(luClass) || luClass === "A302"; // Force A302 just in case
             });
             featsByPlot[idx] = plotFeats;
-            if (plotFeats.length > 0) hasAnyPolygons = true;
+            // Count as valid if we have LU features OR can fall back to the drawn parcel
+            if (plotFeats.length > 0 || !!parcelFeatures[idx]) hasAnyPolygons = true;
         }
 
         if (!hasAnyPolygons) {
@@ -930,19 +970,26 @@ export function ParcelResultsPanel({
         // Now, for each plot `idx`, build its combined geometry and PlantationPolygon!
         for (let idx = 0; idx < parcelFeatures.length; idx++) {
             const plotFeats = featsByPlot[idx] || [];
-            if (plotFeats.length === 0) continue; // skip plots with no selected land-use
-
-            const allRings: GeoJSON.Position[][][] = [];
-            for (const feat of plotFeats) {
-                const geom = feat.geometry as GeoJSON.Polygon | GeoJSON.MultiPolygon;
-                if (geom.type === "Polygon") allRings.push(geom.coordinates);
-                else if (geom.type === "MultiPolygon") allRings.push(...geom.coordinates);
-            }
-            const combinedGeom: GeoJSON.Geometry = allRings.length === 1
-                ? { type: "Polygon", coordinates: allRings[0] }
-                : { type: "MultiPolygon", coordinates: allRings };
-
             const form = plotForms[idx] || { plantYear: "", variety: "", treeCount: "", spacing: "2.5*8" };
+
+            let combinedGeom: GeoJSON.Geometry;
+            if (plotFeats.length === 0) {
+                // No matching LU features (e.g. replanting on forest/misc land) — use drawn parcel geometry
+                if (!parcelFeatures[idx]?.geometry) continue;
+                combinedGeom = parcelFeatures[idx].geometry;
+            } else {
+                const allRings: GeoJSON.Position[][][] = [];
+                for (const feat of plotFeats) {
+                    const geom = feat.geometry as GeoJSON.Polygon | GeoJSON.MultiPolygon;
+                    if (geom.type === "Polygon") allRings.push(geom.coordinates);
+                    else if (geom.type === "MultiPolygon") allRings.push(...geom.coordinates);
+                }
+                combinedGeom = allRings.length === 1
+                    ? { type: "Polygon", coordinates: allRings[0] }
+                    : { type: "MultiPolygon", coordinates: allRings };
+            }
+
+
             const backendYearBE = plots[idx]?.plantYearBE || 0;
             const userYearBE = form.plantYear ? parseInt(form.plantYear) : 0;
 
@@ -1406,13 +1453,49 @@ export function ParcelResultsPanel({
                                                 <i className="bi bi-info-circle" style={{ color: "#10b981" }} /> สถานะแปลง <span style={{ color: "#ef4444" }}>*</span>
                                             </div>
                                             <div style={{ display: "flex", gap: 16 }}>
-                                                <div onClick={() => { updateForm(i, "plantStatus", "replanting"); updateForm(i, "plantYear", String(CURRENT_BE)); onProjectTypeChange?.("replanting"); }} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, cursor: "pointer", userSelect: "none" }}>
+                                                <div onClick={() => {
+                                                    // Auto-check all LU classes detected by backend for this replanting plot
+                                                    const detectedLU = plotsLuRealData[i] || {};
+                                                    const newLuChecked: Record<string, boolean> = { A302: true };
+                                                    Object.keys(detectedLU).forEach(cls => {
+                                                        if (cls !== "U" && detectedLU[cls].rai > 0) newLuChecked[cls] = true;
+                                                    });
+                                                    if (Object.keys(newLuChecked).filter(k => k !== "A302").length === 0) {
+                                                        newLuChecked.A = true; // fallback when LU data not yet available
+                                                    }
+                                                    setPlotForms(prev => prev.map((f, idx) => idx === i ? {
+                                                        ...f,
+                                                        plantStatus: "replanting",
+                                                        plantYear: String(CURRENT_BE),
+                                                        luChecked: newLuChecked,
+                                                    } : f));
+                                                    onProjectTypeChange?.("replanting");
+                                                }} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, cursor: "pointer", userSelect: "none" }}>
                                                     <div style={{ width: 18, height: 18, borderRadius: "50%", border: "2px solid", borderColor: form.plantStatus === "replanting" ? "#10b981" : "#cbd5e1", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, transition: "all 0.2s" }}>
                                                         {form.plantStatus === "replanting" && <div style={{ width: 10, height: 10, borderRadius: "50%", background: "#10b981" }} />}
                                                     </div>
                                                     เริ่มปลูกใหม่
                                                 </div>
-                                                <div onClick={() => { updateForm(i, "plantStatus", "existing"); updateForm(i, "plantYear", ""); onProjectTypeChange?.("existing"); }} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, cursor: "pointer", userSelect: "none" }}>
+                                                <div onClick={() => {
+                                                    // Auto-check A sub-types and F detected by backend for existing plots
+                                                    const detectedLU = plotsLuRealData[i] || {};
+                                                    const newLuChecked: Record<string, boolean> = { A: true, A302: true };
+                                                    Object.keys(detectedLU).forEach(cls => {
+                                                        if (detectedLU[cls].rai > 0) {
+                                                            // include all A sub-types and F
+                                                            if ((cls.startsWith("A") && cls !== "U") || cls === "F") {
+                                                                newLuChecked[cls] = true;
+                                                            }
+                                                        }
+                                                    });
+                                                    setPlotForms(prev => prev.map((f, idx) => idx === i ? {
+                                                        ...f,
+                                                        plantStatus: "existing",
+                                                        plantYear: "",
+                                                        luChecked: newLuChecked,
+                                                    } : f));
+                                                    onProjectTypeChange?.("existing");
+                                                }} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, cursor: "pointer", userSelect: "none" }}>
                                                     <div style={{ width: 18, height: 18, borderRadius: "50%", border: "2px solid", borderColor: form.plantStatus === "existing" ? "#10b981" : "#cbd5e1", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, transition: "all 0.2s" }}>
                                                         {form.plantStatus === "existing" && <div style={{ width: 10, height: 10, borderRadius: "50%", background: "#10b981" }} />}
                                                     </div>
