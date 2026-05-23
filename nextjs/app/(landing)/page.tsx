@@ -7,7 +7,7 @@ export default function Home() {
         <div className="container position-relative z-index-2">
           <div className="row justify-content-center text-center">
             <div
-              className="col-lg-10 d-flex flex-column justify-content-center align-items-center"
+              className="col-lg-12 d-flex flex-column justify-content-center align-items-center"
               data-aos="fade-up"
               data-aos-duration="1000"
             >
@@ -16,12 +16,14 @@ export default function Home() {
                   Kept<span className="gradient-text">Carbon</span>
                 </h1>
                 <p className="hero-subtitle-th">
-                  แพลตฟอร์มภูมิสารสนเทศและปัญญาประดิษฐ์{" "}
-                  <br className="d-none d-md-block" />
-                  เพื่อการจัดการสวนยางพาราอย่างยืดหยุ่นต่อการเปลี่ยนแปลงสภาพภูมิอากาศ
+                  แพลตฟอร์มภูมิสารสนเทศและปัญญาประดิษฐ์ <br />
+                  เพื่อการจัดการสวนยางพาราอย่างยืดหยุ่น
+                  <br className="d-block d-md-none" />
+                  ต่อการเปลี่ยนแปลงสภาพภูมิอากาศ
                 </p>
                 <p className="hero-subtitle-en">
-                  A GeoAI-Driven Platform for Climate-Resilient Rubber Plantation Management
+                  A GeoAI-Driven Platform for Climate-Resilient
+                  <br className="d-block d-md-none" /> Rubber Plantation Management
                 </p>
               </div>
             </div>
@@ -247,7 +249,7 @@ export default function Home() {
                 delay: 500,
               },
             ].map((m) => (
-              <div className="col-lg-3 col-md-6" data-aos="fade-up" data-aos-delay={m.delay} key={m.img}>
+              <div className="col-lg-4 col-md-6" data-aos="fade-up" data-aos-delay={m.delay} key={m.img}>
                 <div className="team-card">
                   <div className="team-avatar-wrap">
                     <div className="team-avatar-img">
