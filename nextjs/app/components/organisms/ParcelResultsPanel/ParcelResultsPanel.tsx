@@ -1946,6 +1946,7 @@ export function ParcelResultsPanel({
                                                 <div
                                                     key={i}
                                                     onClick={() => {
+                                                        if (parcelFeatures[i]) onFlyTo(parcelFeatures[i]);
                                                         onMapPlotSelected?.(i);
                                                     }}
                                                     style={{
