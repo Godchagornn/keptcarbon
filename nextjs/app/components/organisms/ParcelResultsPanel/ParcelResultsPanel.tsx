@@ -527,6 +527,24 @@ export function ParcelResultsPanel({
     const searchParams = useSearchParams();
     const initialProjectName = searchParams.get("project") || "";
     const [projectName, setProjectName] = useState(initialProjectName);
+
+    const isDuplicateProjectName = useMemo(() => {
+        if (!projectName.trim()) return false;
+        if (initialProjectName && projectName.trim().toLowerCase() === initialProjectName.trim().toLowerCase()) {
+            return false;
+        }
+
+        try {
+            const key = user ? `user_saved_plots_${user.id}` : "global_saved_plots";
+            const existing = JSON.parse(localStorage.getItem(key) || "[]");
+            const names = new Set(existing.map((p: any) => String(p.name || "").trim().toLowerCase()));
+            return names.has(projectName.trim().toLowerCase());
+        } catch (e) {
+            console.error(e);
+            return false;
+        }
+    }, [projectName, initialProjectName, user]);
+
     const [ownerName, setOwnerName] = useState(userDisplayName);
     const [province, setProvince] = useState("");
     const [saveState, setSaveState] = useState<"idle" | "saving" | "done">("idle");
@@ -642,6 +660,10 @@ export function ParcelResultsPanel({
     }, [plots, plotForms.length, parcelFeatures]);
 
     const handleProcessCarbon = async () => {
+        if (isDuplicateProjectName) {
+            setCarbonErr("ชื่อโครงการนี้ถูกใช้งานแล้ว กรุณาใช้ชื่ออื่น");
+            return;
+        }
         if (hasEmptyStatus) {
             setCarbonErr("กรุณากรอกสถานะแปลงให้ครบทุกแปลงก่อนทำการประมวลผล");
             return;
@@ -889,6 +911,10 @@ export function ParcelResultsPanel({
     // Removed: if (!(searchRunning || searchErr || searchCount !== null)) return null;
 
     const handleSave = async (overrideResults?: CarbonResult[]) => {
+        if (isDuplicateProjectName) {
+            setCarbonErr("ชื่อโครงการนี้ถูกใช้งานแล้ว กรุณาใช้ชื่ออื่น");
+            return;
+        }
         const resultsToSave = overrideResults || carbonResults;
         const hasCarbonResults = resultsToSave.length > 0;
 
@@ -1113,7 +1139,25 @@ export function ParcelResultsPanel({
                         </button>
                     </div>
                 )}
-                {(!projectName.trim() || hasEmptyStatus) && (
+                {isDuplicateProjectName && (
+                    <div style={{
+                        marginBottom: 16,
+                        padding: "10px 14px",
+                        background: "rgba(220,38,38,0.06)",
+                        border: "1px solid rgba(220,38,38,0.2)",
+                        borderRadius: 10,
+                        fontSize: 12,
+                        color: "#dc2626",
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 8,
+                        fontWeight: 600
+                    }}>
+                        <i className="bi bi-exclamation-triangle-fill" style={{ flexShrink: 0, color: "#dc2626" }} />
+                        <span>ชื่อโครงการนี้ถูกใช้งานแล้ว กรุณาใช้ชื่ออื่น</span>
+                    </div>
+                )}
+                {!isDuplicateProjectName && (!projectName.trim() || hasEmptyStatus) && (
                     <div style={{
                         marginBottom: 16,
                         padding: "10px 14px",
@@ -1147,13 +1191,13 @@ export function ParcelResultsPanel({
                     <button
                         className="prp-btn-primary"
                         onClick={() => handleSave([])}
-                        disabled={!projectName.trim() || saveState === "saving"}
+                        disabled={!projectName.trim() || isDuplicateProjectName || saveState === "saving"}
                         style={{
                             flex: 1, padding: isMobile ? "8px 2px" : "10px 4px", fontSize: isMobile ? 13 : 14, display: "flex", flexDirection: "column", alignItems: "center", gap: isMobile ? 4 : 6,
-                            background: saveState === "done" ? "#94a3b8" : ((projectName.trim() && !hasEmptyStatus) ? "linear-gradient(135deg,#0ea5e9,#0284c7)" : "#cbd5e1"),
+                            background: saveState === "done" ? "#94a3b8" : ((projectName.trim() && !isDuplicateProjectName && !hasEmptyStatus) ? "linear-gradient(135deg,#0ea5e9,#0284c7)" : "#cbd5e1"),
                             color: "#fff", border: "none", borderRadius: isMobile ? 10 : 12,
-                            cursor: saveState !== "idle" ? "not-allowed" : ((projectName.trim() && !hasEmptyStatus) ? "pointer" : "not-allowed"),
-                            boxShadow: saveState === "done" ? "none" : ((projectName.trim() && !hasEmptyStatus) ? "0 4px 10px rgba(2,132,199,0.2)" : "none"),
+                            cursor: saveState !== "idle" ? "not-allowed" : ((projectName.trim() && !isDuplicateProjectName && !hasEmptyStatus) ? "pointer" : "not-allowed"),
+                            boxShadow: saveState === "done" ? "none" : ((projectName.trim() && !isDuplicateProjectName && !hasEmptyStatus) ? "0 4px 10px rgba(2,132,199,0.2)" : "none"),
                             opacity: saveState === "done" ? 0.6 : 1,
                             transition: "all 0.3s"
                         }}
@@ -1169,13 +1213,13 @@ export function ParcelResultsPanel({
                     <button
                         className="prp-btn-primary"
                         onClick={() => { void handleProcessCarbon(); }}
-                        disabled={!projectName.trim() || hasEmptyStatus || processingCarbon}
+                        disabled={!projectName.trim() || isDuplicateProjectName || hasEmptyStatus || processingCarbon}
                         style={{
                             flex: 1, padding: isMobile ? "8px 2px" : "10px 4px", fontSize: isMobile ? 13 : 14, display: "flex", flexDirection: "column", alignItems: "center", gap: isMobile ? 4 : 6,
-                            background: (projectName.trim() && !hasEmptyStatus && !processingCarbon) ? "linear-gradient(135deg,#10b981,#059669)" : "#cbd5e1",
+                            background: (projectName.trim() && !isDuplicateProjectName && !hasEmptyStatus && !processingCarbon) ? "linear-gradient(135deg,#10b981,#059669)" : "#cbd5e1",
                             color: "#fff", border: "none", borderRadius: isMobile ? 10 : 12,
-                            cursor: (projectName.trim() && !hasEmptyStatus && !processingCarbon) ? "pointer" : "not-allowed",
-                            boxShadow: (projectName.trim() && !hasEmptyStatus && !processingCarbon) ? "0 4px 10px rgba(16,185,129,0.2)" : "none"
+                            cursor: (projectName.trim() && !isDuplicateProjectName && !hasEmptyStatus && !processingCarbon) ? "pointer" : "not-allowed",
+                            boxShadow: (projectName.trim() && !isDuplicateProjectName && !hasEmptyStatus && !processingCarbon) ? "0 4px 10px rgba(16,185,129,0.2)" : "none"
                         }}
                     >
                         {processingCarbon ? (
@@ -1208,11 +1252,32 @@ export function ParcelResultsPanel({
                 )}
 
                 {/* Project name — shared */}
-                <div style={{ background: "linear-gradient(135deg,#f0fdf4,#ecfdf5)", borderRadius: 14, padding: isMobile ? "14px 14px" : "16px 20px", marginBottom: 16, border: "1px solid rgba(16,185,129,0.18)" }}>
-                    <div style={{ fontSize: 14, fontWeight: 700, color: "#059669", marginBottom: 6, display: "flex", alignItems: "center", gap: 6 }}>
+                <div style={{
+                    background: isDuplicateProjectName ? "linear-gradient(135deg,#fef2f2,#fff5f5)" : "linear-gradient(135deg,#f0fdf4,#ecfdf5)",
+                    borderRadius: 14,
+                    padding: isMobile ? "14px 14px" : "16px 20px",
+                    marginBottom: 16,
+                    border: isDuplicateProjectName ? "1px solid rgba(220,38,38,0.25)" : "1px solid rgba(16,185,129,0.18)"
+                }}>
+                    <div style={{ fontSize: 14, fontWeight: 700, color: isDuplicateProjectName ? "#dc2626" : "#059669", marginBottom: 6, display: "flex", alignItems: "center", gap: 6 }}>
                         <i className="bi bi-folder2-open" /> ชื่อโครงการ  <span style={{ color: "#ef4444" }}>*</span>
                     </div>
-                    <input className="prp-input" style={{ marginBottom: 0 }} placeholder="เช่น โครงการที่1" value={projectName} onChange={e => setProjectName(e.target.value)} />
+                    <input
+                        className="prp-input"
+                        style={{
+                            marginBottom: 0,
+                            borderColor: isDuplicateProjectName ? "#dc2626" : undefined,
+                            boxShadow: isDuplicateProjectName ? "0 0 0 1px rgba(220,38,38,0.2)" : undefined
+                        }}
+                        placeholder="เช่น โครงการที่1"
+                        value={projectName}
+                        onChange={e => setProjectName(e.target.value)}
+                    />
+                    {isDuplicateProjectName && (
+                        <div style={{ color: "#dc2626", fontSize: 12, marginTop: 6, fontWeight: 600, display: "flex", alignItems: "center", gap: 4 }}>
+                            <i className="bi bi-exclamation-circle-fill" /> ชื่อโครงการนี้ถูกใช้งานแล้ว กรุณาใช้ชื่ออื่น
+                        </div>
+                    )}
                 </div>
 
                 {/* Summary of drawn parcels */}
@@ -1778,7 +1843,7 @@ export function ParcelResultsPanel({
                         <button
                             className="prp-btn-primary"
                             onClick={() => handleSave()}
-                            disabled={!projectName.trim() || saveState === "saving"}
+                            disabled={!projectName.trim() || isDuplicateProjectName || saveState === "saving"}
                             style={{
                                 flex: 1.2,
                                 height: "42px",
@@ -1794,8 +1859,8 @@ export function ParcelResultsPanel({
                                 alignItems: "center",
                                 justifyContent: "center",
                                 gap: "4px",
-                                cursor: !projectName.trim() || saveState === "saving" ? "not-allowed" : "pointer",
-                                opacity: !projectName.trim() || saveState === "saving" ? 0.6 : 1,
+                                cursor: !projectName.trim() || isDuplicateProjectName || saveState === "saving" ? "not-allowed" : "pointer",
+                                opacity: !projectName.trim() || isDuplicateProjectName || saveState === "saving" ? 0.6 : 1,
                                 color: "#fff",
                                 transition: "all 0.2s",
                                 boxShadow: "0 4px 10px rgba(2,132,199,0.2)"
