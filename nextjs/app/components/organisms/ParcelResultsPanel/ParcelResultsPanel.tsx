@@ -1368,6 +1368,27 @@ export function ParcelResultsPanel({
                     </button>
                 </div>
 
+                {/* Warning: no LU selected for a plot that has detected data */}
+                {plotForms.some((form, idx) => {
+                    if (!form.plantStatus) return false;
+                    const plotLU = plotsLuRealData[idx] || {};
+                    const hasDetected = Object.values(plotLU).some(v => v.rai > 0);
+                    if (!hasDetected) return false;
+                    // Exclude "A" (parent category, always auto-checked) — only count actual leaf LU classes
+                    return Object.entries(form.luChecked || {})
+                        .filter(([cls, on]) => cls !== "A" && on && (plotLU[cls]?.rai ?? 0) > 0).length === 0;
+                }) && (
+                    <div style={{
+                        marginBottom: 12, padding: "8px 12px",
+                        background: "rgba(245,158,11,0.10)", border: "1px solid rgba(245,158,11,0.35)",
+                        borderRadius: 10, display: "flex", alignItems: "center", gap: 8,
+                        fontSize: 12, color: "#92400e", fontWeight: 600
+                    }}>
+                        <i className="bi bi-exclamation-triangle-fill" style={{ color: "#f59e0b", flexShrink: 0 }} />
+                        <span>กรุณาเลือกประเภทการใช้ที่ดินอย่างน้อย 1 ประเภทในแต่ละแปลงก่อนประมวลผล</span>
+                    </div>
+                )}
+
                 {/* Project name — shared */}
                 <div style={{ background: "linear-gradient(135deg,#f0fdf4,#ecfdf5)", borderRadius: 14, padding: isMobile ? "14px 14px" : "16px 20px", marginBottom: 16, border: "1px solid rgba(16,185,129,0.18)" }}>
                     <div style={{ fontSize: 12, fontWeight: 700, color: "#059669", marginBottom: 6, display: "flex", alignItems: "center", gap: 6 }}>
@@ -1694,8 +1715,9 @@ export function ParcelResultsPanel({
                                                 }, 0);
 
                                                 const hasAnyDetected = Object.values(plotLUData).some(v => v.rai > 0);
+                                                // Exclude "A" (parent, always auto-checked) — only count actual leaf LU classes
                                                 const effectiveCount = Object.entries(form.luChecked || {})
-                                                    .filter(([cls, on]) => on && (plotLUData[cls]?.rai ?? 0) > 0).length;
+                                                    .filter(([cls, on]) => cls !== "A" && on && (plotLUData[cls]?.rai ?? 0) > 0).length;
                                                 const showNoLuWarning = form.plantStatus && hasAnyDetected && effectiveCount === 0;
 
                                                 return selectedRai > 0 ? (
