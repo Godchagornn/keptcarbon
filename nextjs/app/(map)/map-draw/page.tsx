@@ -38,6 +38,19 @@ function MapDrawContent() {
   
   const searchParams = useSearchParams();
 
+  const projNameParam = useMemo(() => {
+    let pName = searchParams?.get("project");
+    if (!pName && typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      pName = params.get("project");
+    }
+    return pName || "";
+  }, [searchParams]);
+
+  const handleExitProject = useCallback(() => {
+    window.location.href = "/map-draw";
+  }, []);
+
   // Draw state
   const [drawing, setDrawing] = useState(false);
   const drawingRef = useRef(false);
@@ -1800,6 +1813,92 @@ function MapDrawContent() {
             <i className="bi bi-x-lg" />
           </button>
         </div>
+
+        {/* ── Custom Stepper Styles Override ── */}
+        <style>{`
+          .mds-stepper .mds-step-circle {
+            width: 30px !important;
+            height: 30px !important;
+            min-width: 30px !important;
+            font-size: 11.5px !important;
+          }
+          .mds-stepper .mds-step:not(:last-of-type)::after {
+            top: 15px !important;
+            left: calc(50% + 15px) !important;
+            right: calc(-50% + 15px) !important;
+          }
+          .mds-stepper .mds-step.active .mds-step-circle {
+            transform: scale(1.1) !important;
+          }
+          .mds-stepper .mds-step-label {
+            font-size: 10.5px !important;
+            font-weight: 700 !important;
+          }
+        `}</style>
+
+        {/* ── Project Mode Banner ── */}
+        {projNameParam && (
+          <div style={{
+            background: "#ffffff",
+            borderBottom: "1px solid #e2e8f0",
+            padding: "14px 20px",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: "14px",
+            boxSizing: "border-box"
+          }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "12px", overflow: "hidden" }}>
+              <div style={{
+                width: "36px",
+                height: "36px",
+                borderRadius: "10px",
+                background: "rgba(16, 185, 129, 0.08)",
+                border: "1px solid rgba(16, 185, 129, 0.15)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                flexShrink: 0
+              }}>
+                <i className="bi bi-folder-fill" style={{ color: "#10b981", fontSize: "18px" }} />
+              </div>
+              <div style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                <span style={{ fontSize: "12.5px", color: "#64748b", fontWeight: 600, display: "block", lineHeight: 1.25 }}>แก้ไขโครงการ</span>
+                <strong style={{ fontSize: "18px", color: "#0f172a", fontWeight: 800, display: "block", marginTop: "2px" }} title={projNameParam}>{projNameParam}</strong>
+              </div>
+            </div>
+            <button
+              onClick={handleExitProject}
+              style={{
+                background: "#ffffff",
+                color: "#dc2626",
+                border: "1px solid rgba(220, 38, 38, 0.25)",
+                borderRadius: "10px",
+                padding: "8px 16px",
+                fontSize: "13.5px",
+                fontWeight: 600,
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                gap: "6px",
+                transition: "all 0.2s",
+                whiteSpace: "nowrap",
+                flexShrink: 0,
+                boxShadow: "0 1px 2px rgba(0,0,0,0.02)"
+              }}
+              onMouseOver={(e) => {
+                e.currentTarget.style.background = "rgba(220, 38, 38, 0.04)";
+                e.currentTarget.style.borderColor = "rgba(220, 38, 38, 0.45)";
+              }}
+              onMouseOut={(e) => {
+                e.currentTarget.style.background = "#ffffff";
+                e.currentTarget.style.borderColor = "rgba(220, 38, 38, 0.25)";
+              }}
+            >
+              <i className="bi bi-x-circle" style={{ fontSize: "15px" }} /> ออกจากโครงการ
+            </button>
+          </div>
+        )}
 
         {/* ── Step Tracker ── */}
         <div className="mds-stepper">
