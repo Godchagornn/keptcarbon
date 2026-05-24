@@ -508,8 +508,6 @@ export default function DashboardPage() {
   const [mapBbox, setMapBbox] = useState<{ minLng: number; minLat: number; maxLng: number; maxLat: number } | null>(null);
   const [dashData, setDashData] = useState<DashboardRayongResponse | null>(null);
   const [dashDistricts, setDashDistricts] = useState<DashboardDistrict[] | null>(null);
-  const [luDataYear, setLuDataYear] = useState<number | null>(null);
-
   useEffect(() => {
     if (typeof window === "undefined") return;
     setIsMobile(window.innerWidth < 768);
@@ -525,7 +523,6 @@ export default function DashboardPage() {
         if (!data) return;
         setMapPlots(data.mapPlots ?? []);
         setMapBbox(data.bbox ?? null);
-        if (data.luDataYear) setLuDataYear(data.luDataYear);
       })
       .catch(console.error);
   }, []);
@@ -625,11 +622,9 @@ export default function DashboardPage() {
               </h1>
               <div style={{ fontSize: isMobile ? 15 : 17, color: "#64748b", margin: 0, fontWeight: 500, display: "flex", flexDirection: isMobile ? "column" : "row", alignItems: isMobile ? "flex-start" : "center", gap: isMobile ? 8 : 6 }}>
                 <span>ข้อมูลการใช้ประโยชน์ที่ดิน (LU) กรมพัฒนาที่ดิน</span>
-                {luDataYear ? (
-                    <span style={{ background: "rgba(5,150,105,0.1)", border: "1px solid rgba(5,150,105,0.2)", borderRadius: 6, padding: "2px 8px", fontSize: isMobile ? 13 : 14, fontWeight: 700, color: "#059669", whiteSpace: "nowrap" }}>
-                    ปี พ.ศ. {luDataYear}
-                  </span>
-                ) : null}
+                <span style={{ background: "rgba(5,150,105,0.1)", border: "1px solid rgba(5,150,105,0.2)", borderRadius: 6, padding: "2px 8px", fontSize: isMobile ? 13 : 14, fontWeight: 700, color: "#059669", whiteSpace: "nowrap" }}>
+                  ปี พ.ศ. 2567
+                </span>
               </div>
             </div>
           </div>
