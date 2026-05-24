@@ -41,9 +41,31 @@ type SavedPlot = {
   processed?: boolean;
 };
 
+const PROJECT_COLORS = [
+  "#f97316",
+];
+
 function PlotsMapView({ plots, isMobile }: { plots: SavedPlot[], isMobile: boolean }) {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
+  const legendRef = useRef<HTMLDivElement>(null);
+
+  // Group plots by project name, assign colors
+  const projectMap = useMemo(() => {
+    const groups: { name: string; color: string; plots: SavedPlot[] }[] = [];
+    const seen = new Map<string, number>();
+    plots.forEach(p => {
+      const name = p.name || "ไม่มีชื่อโครงการ";
+      if (!seen.has(name)) {
+        const color = PROJECT_COLORS[seen.size % PROJECT_COLORS.length];
+        seen.set(name, groups.length);
+        groups.push({ name, color, plots: [p] });
+      } else {
+        groups[seen.get(name)!].plots.push(p);
+      }
+    });
+    return groups;
+  }, [plots]);
 
   useEffect(() => {
     if (!mapContainerRef.current || mapRef.current) return;
@@ -88,38 +110,50 @@ function PlotsMapView({ plots, isMobile }: { plots: SavedPlot[], isMobile: boole
     const onMapLoad = () => {
       if (!mapRef.current) return;
       const m = mapRef.current;
+
+      // Build match expression: ["match", ["get", "projectName"], "A", colorA, "B", colorB, ..., defaultColor]
+      const fillMatch: any[] = ["match", ["get", "projectName"]];
+      const lineMatch: any[] = ["match", ["get", "projectName"]];
+      const boundaryFillMatch: any[] = ["match", ["get", "projectName"]];
+      const boundaryLineMatch: any[] = ["match", ["get", "projectName"]];
+
       const boundaryFeatures: any[] = [];
       const parcelFeatures: any[] = [];
 
-      plots.forEach((p, i) => {
-        const carbonPerTree = (p.trees && p.trees > 0)
-          ? (p.carbonTotal / p.trees).toFixed(3)
-          : null;
-        const props = {
-          id: p.id,
-          name: p.name,
-          area: p.areaRai.toFixed(2),
-          carbon: p.carbonTotal.toFixed(2),
-          carbonPerTree: carbonPerTree ?? "—",
-          province: p.province || "—",
-          index: String(i + 1)
-        };
+      projectMap.forEach(({ name, color, plots: groupPlots }) => {
+        fillMatch.push(name, color);
+        lineMatch.push(name, color);
+        boundaryFillMatch.push(name, color);
+        boundaryLineMatch.push(name, color);
 
-        if (p.boundaryGeojson) {
-          boundaryFeatures.push({
-            type: "Feature",
-            geometry: p.boundaryGeojson,
-            properties: { ...props, type: 'boundary' }
-          });
-        }
-        if (p.geojson) {
-          parcelFeatures.push({
-            type: "Feature",
-            geometry: p.geojson,
-            properties: { ...props, type: 'parcel' }
-          });
-        }
+        groupPlots.forEach(p => {
+          const carbonPerTree = (p.trees && p.trees > 0)
+            ? (p.carbonTotal / p.trees).toFixed(3)
+            : null;
+          const props = {
+            id: p.id,
+            projectName: name,
+            area: p.areaRai.toFixed(2),
+            carbon: p.carbonTotal.toFixed(2),
+            carbonPerTree: carbonPerTree ?? "—",
+            province: p.province || "—",
+          };
+
+          // Removed boundaryGeojson to only show actual parcels
+          if (p.geojson) {
+            parcelFeatures.push({
+              type: "Feature",
+              geometry: p.geojson,
+              properties: { ...props, type: 'parcel' }
+            });
+          }
+        });
       });
+
+      fillMatch.push("#ea580c");
+      lineMatch.push("#9a3412");
+      boundaryFillMatch.push("#3b82f6");
+      boundaryLineMatch.push("#3b82f6");
 
       map.addSource("my-boundaries", {
         type: "geojson",
@@ -134,14 +168,14 @@ function PlotsMapView({ plots, isMobile }: { plots: SavedPlot[], isMobile: boole
         id: "boundary-fill",
         type: "fill",
         source: "my-boundaries",
-        paint: { "fill-color": "#3b82f6", "fill-opacity": 0.05 }
+        paint: { "fill-color": boundaryFillMatch as any, "fill-opacity": 0.05 }
       });
       map.addLayer({
         id: "boundary-outline",
         type: "line",
         source: "my-boundaries",
         paint: {
-          "line-color": "#3b82f6",
+          "line-color": boundaryLineMatch as any,
           "line-width": 1.5,
           "line-dasharray": [4, 2]
         }
@@ -151,41 +185,20 @@ function PlotsMapView({ plots, isMobile }: { plots: SavedPlot[], isMobile: boole
         id: "parcel-fill",
         type: "fill",
         source: "my-parcels",
-        paint: {
-          "fill-color": "#ea580c",
-          "fill-opacity": 0.35
-        }
+        paint: { "fill-color": fillMatch as any, "fill-opacity": 0.35 }
       });
       map.addLayer({
         id: "parcel-outline",
         type: "line",
         source: "my-parcels",
-        paint: { "line-color": "#9a3412", "line-width": 2 }
-      });
-
-      // Index Labels
-      map.addLayer({
-        id: "parcel-label",
-        type: "symbol",
-        source: "my-parcels",
-        layout: {
-          "text-field": ["get", "index"],
-          "text-size": 16,
-          "text-allow-overlap": false,
-        },
-        paint: {
-          "text-color": "#dc2626",
-          "text-halo-color": "#ffffff",
-          "text-halo-width": 3,
-        }
+        paint: { "line-color": lineMatch as any, "line-width": 2 }
       });
 
       const handlePlotClick = (e: any) => {
         if (!e.features?.length) return;
         const p = e.features[0].properties;
         const isBoundary = p.type === 'boundary';
-        if (isBoundary) return;  // ไม่แสดง popup สำหรับขอบเขตที่วาด
-        const dot = isBoundary ? '#6366f1' : '#10b981';
+        if (isBoundary) return;
         const html = `
           <div style="
             font-family: 'Noto Sans Thai', 'Noto Sans', system-ui, sans-serif;
@@ -196,33 +209,14 @@ function PlotsMapView({ plots, isMobile }: { plots: SavedPlot[], isMobile: boole
             box-shadow: 0 8px 24px rgba(0,0,0,0.10);
             overflow: hidden;
           ">
-            <!-- Accent top bar -->
-            <div style="height: 3px; background: ${dot};"></div>
-
-            <!-- Content -->
+            <div style="height: 3px; background: #10b981;"></div>
             <div style="padding: 14px 16px 12px;">
-              <!-- Type + Index -->
-              <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:10px;">
-                <span style="
-                  font-size: 11px; font-weight: 700; letter-spacing: 0.5px;
-                  color: ${dot}; text-transform: uppercase;
-                ">${isBoundary ? 'ขอบเขตที่วาด' : 'แปลงที่ตรวจพบ'}</span>
-                <span style="font-size: 12px; color: #cbd5e1; font-weight: 600;">#${p.index}</span>
-              </div>
-
-              <!-- Name -->
-              <div style="font-size: 17px; font-weight: 800; color: #0f172a; margin-bottom: 6px; line-height: 1.2;">${p.name}</div>
-
-              <!-- Province -->
+              <div style="font-size: 17px; font-weight: 800; color: #0f172a; margin-bottom: 6px; line-height: 1.2;">${p.projectName}</div>
               <div style="display:flex; align-items:center; gap:5px; color:#94a3b8; font-size:13px; margin-bottom:14px;">
-                <i class="bi bi-geo-alt-fill" style="font-size:12px; color:${dot};"></i>
+                <i class="bi bi-geo-alt-fill" style="font-size:12px; color:#10b981;"></i>
                 <span>${p.province}</span>
               </div>
-
-              <!-- Divider -->
               <div style="height:1px; background:#f1f5f9; margin-bottom:12px;"></div>
-
-              <!-- Stats row -->
               <div style="display:flex; gap:12px; align-items:flex-start;">
                 <div>
                   <div style="font-size:16px; font-weight:800; color:#0f172a;">${p.area}</div>
@@ -274,7 +268,7 @@ function PlotsMapView({ plots, isMobile }: { plots: SavedPlot[], isMobile: boole
       map.remove();
       mapRef.current = null;
     };
-  }, [isMobile]); // Only recreate map if isMobile changes (rare)
+  }, [isMobile, projectMap]);
 
   // Separate effect to update data when plots change
   useEffect(() => {
@@ -283,28 +277,28 @@ function PlotsMapView({ plots, isMobile }: { plots: SavedPlot[], isMobile: boole
 
     const boundaryFeatures: any[] = [];
     const parcelFeatures: any[] = [];
+    const seenPNames = new Map<string, number>();
+    const projectOrder: string[] = [];
 
-    plots.forEach((p, i) => {
+    plots.forEach(p => {
+      const name = p.name || "ไม่มีชื่อโครงการ";
+      if (!seenPNames.has(name)) {
+        seenPNames.set(name, projectOrder.length);
+        projectOrder.push(name);
+      }
       const carbonPerTree = (p.trees && p.trees > 0)
         ? (p.carbonTotal / p.trees).toFixed(3)
         : null;
       const props = {
         id: p.id,
-        name: p.name,
+        projectName: name,
         area: p.areaRai.toFixed(2),
         carbon: p.carbonTotal.toFixed(2),
         carbonPerTree: carbonPerTree ?? "—",
         province: p.province || "—",
-        index: String(i + 1)
       };
 
-      if (p.boundaryGeojson) {
-        boundaryFeatures.push({
-          type: "Feature",
-          geometry: p.boundaryGeojson,
-          properties: { ...props, type: 'boundary' }
-        });
-      }
+      // Removed boundaryGeojson to only show actual parcels
       if (p.geojson) {
         parcelFeatures.push({
           type: "Feature",
@@ -331,7 +325,6 @@ function PlotsMapView({ plots, isMobile }: { plots: SavedPlot[], isMobile: boole
         processCoords(geom.coordinates);
       });
       if (!bounds.isEmpty()) {
-        // Only fit bounds if the number of plots has changed to avoid fighting manual zoom
         const prevCount = map.getContainer().getAttribute('data-plot-count');
         if (prevCount !== String(plots.length)) {
           map.fitBounds(bounds, { padding: isMobile ? 40 : 80, duration: 1200 });
@@ -373,6 +366,19 @@ function PlotsMapView({ plots, isMobile }: { plots: SavedPlot[], isMobile: boole
           style={{ padding: "6px 12px", borderRadius: 8, border: "none", fontSize: 13, fontWeight: 700, cursor: "pointer", background: "transparent" }}
         >ลายเส้น</button>
       </div>
+
+      {/* Legend */}
+      {projectMap.length > 1 && (
+        <div ref={legendRef} style={{ position: "absolute", bottom: 12, right: 12, background: "rgba(255,255,255,0.95)", borderRadius: 12, padding: "10px 14px", boxShadow: "0 4px 16px rgba(0,0,0,0.12)", zIndex: 1, maxWidth: 200 }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: "#475569", marginBottom: 6 }}>โครงการ</div>
+          {projectMap.map(({ name, color }) => (
+            <div key={name} style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 3, fontSize: 12, color: "#1e293b" }}>
+              <div style={{ width: 12, height: 12, borderRadius: 3, background: color, flexShrink: 0 }} />
+              <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{name}</span>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -482,7 +488,7 @@ function EditPlotModal({ plot, onClose, onSave, isMobile }: { plot: SavedPlot; o
   );
 }
 
-function PlotMiniMap({ plot, isMobile }: { plot: SavedPlot; isMobile: boolean }) {
+function PlotMiniMap({ plot, isMobile, index }: { plot: SavedPlot; isMobile: boolean; index: number }) {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
 
@@ -505,26 +511,30 @@ function PlotMiniMap({ plot, isMobile }: { plot: SavedPlot; isMobile: boolean })
     map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "bottom-right");
 
     map.on("load", () => {
-      const geom = plot.boundaryGeojson || plot.geojson;
-      if (!geom) return;
-      map.addSource("plot-geom", {
-        type: "geojson",
-        data: { type: "Feature", geometry: geom as any, properties: {} }
-      });
-      map.addLayer({
-        id: "plot-fill", type: "fill", source: "plot-geom",
-        paint: { "fill-color": "#f97316", "fill-opacity": 0.35 }
-      });
-      map.addLayer({
-        id: "plot-line", type: "line", source: "plot-geom",
-        paint: { "line-color": "#ea580c", "line-width": 2 }
-      });
       const bounds = new maplibregl.LngLatBounds();
-      const processCoords = (coords: any) => {
-        if (typeof coords[0] === "number") bounds.extend(coords as [number, number]);
-        else if (Array.isArray(coords)) coords.forEach(processCoords);
-      };
-      processCoords((geom as any).coordinates);
+
+      // Removed plot.boundaryGeojson rendering so each sub-parcel only shows its own boundary
+
+      if (plot.geojson) {
+        map.addSource("plot-parcel", {
+          type: "geojson",
+          data: { type: "Feature", geometry: plot.geojson as any, properties: {} }
+        });
+        map.addLayer({
+          id: "parcel-fill", type: "fill", source: "plot-parcel",
+          paint: { "fill-color": "#f97316", "fill-opacity": 0.35 }
+        });
+        map.addLayer({
+          id: "parcel-line", type: "line", source: "plot-parcel",
+          paint: { "line-color": "#ea580c", "line-width": 2 }
+        });
+        const processCoords = (coords: any) => {
+          if (typeof coords[0] === "number") bounds.extend(coords as [number, number]);
+          else if (Array.isArray(coords)) coords.forEach(processCoords);
+        };
+        processCoords((plot.geojson as any).coordinates);
+      }
+
       if (!bounds.isEmpty()) {
         map.fitBounds(bounds, { padding: isMobile ? 30 : 40, duration: 0 });
       }
@@ -572,7 +582,6 @@ function PlotCard({ plot, index, onDelete, onEdit, expanded, onToggle, isMobile 
     { label: "พันธุ์ยาง", val: plot.variety || "—", unit: "", icon: "bi-patch-check-fill", color: "#8b5cf6", bg: "rgba(139,92,246,0.12)" },
     { label: "ระยะปลูก", val: plot.spacing || "—", unit: "ม.", icon: "bi-arrows-fullscreen", color: "#f59e0b", bg: "rgba(245,158,11,0.12)" },
     { label: "จำนวนต้น", val: plot.trees && plot.trees > 0 ? plot.trees.toLocaleString("th-TH") : "—", unit: "ต้น", icon: "bi-tree-fill", color: "#10b981", bg: "rgba(16,185,129,0.12)" },
-    ...(isProcessed ? [{ label: "คาร์บอนรวม", val: plot.carbonTotal > 0 ? Math.floor(plot.carbonTotal).toLocaleString("th-TH") : "—", unit: "tCO₂", icon: "bi-graph-up-arrow", color: "#059669", bg: "rgba(5,150,105,0.12)" }] : []),
   ];
 
   return (
@@ -611,16 +620,16 @@ function PlotCard({ plot, index, onDelete, onEdit, expanded, onToggle, isMobile 
             fontSize: 21, fontWeight: 900, color: "#fff", letterSpacing: -0.5
           }}>{index}</div>
           <div style={{ minWidth: 0 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <div style={{ fontSize: 18, fontWeight: 800, color: "#0f172a", lineHeight: 1.3 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+              <div style={{ fontSize: 18, fontWeight: 800, color: "#0f172a", lineHeight: 1.3, whiteSpace: "nowrap" }}>
                 แปลงที่ {index}
               </div>
               {isProcessed ? (
-                <span style={{ fontSize: 10, fontWeight: 700, color: "#059669", background: "rgba(5,150,105,0.1)", border: "1px solid rgba(5,150,105,0.25)", padding: "2px 8px", borderRadius: 20, display: "inline-flex", alignItems: "center", gap: 3 }}>
+                <span style={{ fontSize: 10, fontWeight: 700, color: "#059669", background: "rgba(5,150,105,0.1)", border: "1px solid rgba(5,150,105,0.25)", padding: "2px 8px", borderRadius: 20, display: "inline-flex", alignItems: "center", gap: 3, whiteSpace: "nowrap" }}>
                   <i className="bi bi-check-circle-fill" style={{ fontSize: 9 }} />ประมวลผลแล้ว
                 </span>
               ) : (
-                <span style={{ fontSize: 10, fontWeight: 700, color: "#f59e0b", background: "rgba(245,158,11,0.1)", border: "1px solid rgba(245,158,11,0.25)", padding: "2px 8px", borderRadius: 20, display: "inline-flex", alignItems: "center", gap: 3 }}>
+                <span style={{ fontSize: 10, fontWeight: 700, color: "#f59e0b", background: "rgba(245,158,11,0.1)", border: "1px solid rgba(245,158,11,0.25)", padding: "2px 8px", borderRadius: 20, display: "inline-flex", alignItems: "center", gap: 3, whiteSpace: "nowrap" }}>
                   <i className="bi bi-clock" style={{ fontSize: 9 }} />ยังไม่ประมวลผล
                 </span>
               )}
@@ -643,6 +652,15 @@ function PlotCard({ plot, index, onDelete, onEdit, expanded, onToggle, isMobile 
         <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
           {!confirmDelete ? (
             <>
+              <Link
+                href={`/map-draw?project=${encodeURIComponent(plot.name)}&action=calc&plotId=${plot.id}`}
+                title="ประมวลผลคาร์บอน"
+                style={{ width: 34, height: 34, borderRadius: 9, background: "rgba(16,185,129,0.07)", color: "#10b981", border: "none", cursor: "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center", textDecoration: "none", transition: "background 0.15s" }}
+                onMouseEnter={e => { e.currentTarget.style.background = "rgba(16,185,129,0.14)"; }}
+                onMouseLeave={e => { e.currentTarget.style.background = "rgba(16,185,129,0.07)"; }}
+              >
+                <i className="bi bi-magic" style={{ fontSize: 14 }} />
+              </Link>
               <button
                 onClick={() => onEdit?.(plot)}
                 title="แก้ไข"
@@ -750,7 +768,7 @@ function PlotCard({ plot, index, onDelete, onEdit, expanded, onToggle, isMobile 
       {expanded && (
         <div style={{ padding: isMobile ? "12px 16px 20px" : "16px 20px 24px", background: "#fff", borderTop: "1px solid #f8fafc" }}>
           {activeTab === "map" && (
-            <PlotMiniMap plot={plot} isMobile={isMobile} />
+            <PlotMiniMap plot={plot} isMobile={isMobile} index={index} />
           )}
           {activeTab === "chart" && (
             isProcessed && barPts.length > 0 ? (
@@ -938,7 +956,7 @@ export default function MyPlotsPage() {
       const d = new Date(p.date).getTime();
       if (d > groups[pName].date) groups[pName].date = d;
     });
-    return Object.values(groups).sort((a, b) => b.date - a.date);
+    return Object.values(groups).sort((a, b) => a.date - b.date);
   }, [filteredPlots]);
 
   const [expandedProjects, setExpandedProjects] = useState<Record<string, boolean>>({});
@@ -1177,13 +1195,13 @@ export default function MyPlotsPage() {
             <div style={{ display: "flex", flexDirection: "column", gap: isMobile ? 24 : 32 }}>
               {editingPlot && <EditPlotModal plot={editingPlot} onClose={() => setEditingPlot(null)} onSave={handleUpdatePlot} isMobile={isMobile} />}
               {projectGroups.map((group, gIdx) => (
-                <div key={`${group.projectName}-${gIdx}`} style={{ background: "#fff", borderRadius: 24, border: "1px solid rgba(16,185,129,0.2)", overflow: "hidden", boxShadow: "0 10px 30px rgba(0,0,0,0.03)" }}>
+                <div key={`${group.projectName}-${gIdx}`} style={{ position: "relative", background: "#fff", borderRadius: 24, border: "1px solid rgba(16,185,129,0.2)", overflow: "hidden", boxShadow: "0 10px 30px rgba(0,0,0,0.03)" }}>
                   {/* Project Header */}
                   <div style={{ padding: isMobile ? "14px 16px" : "16px 24px", background: "linear-gradient(135deg,rgba(16,185,129,0.04),rgba(5,150,105,0.01))", display: "flex", flexDirection: isMobile ? "column" : "row", justifyContent: "space-between", alignItems: isMobile ? "flex-start" : "center", gap: 12 }}>
                     <div>
-                      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
-                        <div style={{ width: 32, height: 32, borderRadius: 10, background: "#10b981", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 17 }}>
-                          <i className="bi bi-folder-fill" />
+                      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6 }}>
+                        <div style={{ width: 32, height: 32, borderRadius: "50%", background: "linear-gradient(135deg, #10b981 0%, #047857 100%)", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16, fontWeight: 900, boxShadow: "0 2px 8px rgba(16,185,129,0.35)", flexShrink: 0 }}>
+                          {gIdx + 1}
                         </div>
                         <h3 style={{ margin: 0, fontSize: isMobile ? 20 : 22, fontWeight: 800, color: "#064e3b" }}>{group.projectName}</h3>
                       </div>
