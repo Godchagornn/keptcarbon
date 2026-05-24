@@ -734,14 +734,16 @@ function PlotCard({ plot, index, onDelete, onEdit, expanded, onToggle, isMobile 
             else { if (!expanded) onToggle(); setActiveTab("map"); }
           }}
           style={{
-            flex: 1, padding: "12px", background: expanded && activeTab === "map" ? "rgba(16,185,129,0.06)" : "#fff",
+            flex: 1, padding: isMobile ? "10px 4px" : "12px", background: expanded && activeTab === "map" ? "rgba(16,185,129,0.06)" : "#fff",
             border: "none", borderRight: "1px solid rgba(16,185,129,0.08)", cursor: "pointer",
-            fontSize: 14, fontWeight: 700, color: expanded && activeTab === "map" ? "#059669" : "#64748b",
-            display: "flex", alignItems: "center", justifyContent: "center", gap: 8, transition: "background 0.15s"
+            fontSize: isMobile ? 12 : 14, fontWeight: 700, color: expanded && activeTab === "map" ? "#059669" : "#64748b",
+            display: "flex", flexDirection: isMobile ? "column" : "row", alignItems: "center", justifyContent: "center", gap: 6, transition: "background 0.15s"
           }}
         >
-          <i className={`bi bi-map${expanded && activeTab === "map" ? "-fill" : ""}`} style={{ fontSize: 15 }} />
-          แผนที่ของแปลง
+          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <i className={`bi bi-map${expanded && activeTab === "map" ? "-fill" : ""}`} style={{ fontSize: 15 }} />
+            <span style={{ whiteSpace: "nowrap" }}>แผนที่ของแปลง</span>
+          </div>
         </button>
         <button
           onClick={() => {
@@ -749,18 +751,20 @@ function PlotCard({ plot, index, onDelete, onEdit, expanded, onToggle, isMobile 
             else { if (!expanded) onToggle(); setActiveTab("chart"); }
           }}
           style={{
-            flex: 1, padding: "12px", background: expanded && activeTab === "chart" ? "rgba(16,185,129,0.06)" : "#fff",
+            flex: 1, padding: isMobile ? "10px 4px" : "12px", background: expanded && activeTab === "chart" ? "rgba(16,185,129,0.06)" : "#fff",
             border: "none",
-            fontSize: 14, fontWeight: 700,
+            fontSize: isMobile ? 12 : 14, fontWeight: 700,
             color: !isProcessed ? "#cbd5e1" : (expanded && activeTab === "chart" ? "#059669" : "#64748b"),
-            display: "flex", alignItems: "center", justifyContent: "center", gap: 8, transition: "background 0.15s",
+            display: "flex", flexDirection: isMobile ? "column" : "row", alignItems: "center", justifyContent: "center", gap: 6, transition: "background 0.15s",
             cursor: isProcessed ? "pointer" : "default",
-            opacity: isProcessed ? 1 : 0.6,
+            opacity: isProcessed ? 1 : 0.6
           }}
         >
-          <i className={`bi bi-bar-chart-line${expanded && activeTab === "chart" ? "-fill" : ""}`} style={{ fontSize: 15 }} />
-           กราฟคาร์บอน (tCO₂)
-          {!isProcessed && <span style={{ fontSize: 10, color: "#f59e0b", marginLeft: 2 }}>ยังไม่ประมวลผล</span>}
+          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <i className={`bi bi-bar-chart-line${expanded && activeTab === "chart" ? "-fill" : ""}`} style={{ fontSize: 15 }} />
+            <span style={{ whiteSpace: "nowrap" }}>กราฟคาร์บอน (tCO₂)</span>
+          </div>
+          {!isProcessed && <span style={{ fontSize: 10, color: "#f59e0b", whiteSpace: "nowrap", background: "rgba(245,158,11,0.08)", padding: "2px 6px", borderRadius: 10 }}>ยังไม่ประมวลผล</span>}
         </button>
       </div>
 

@@ -1838,16 +1838,17 @@ export function ParcelResultsPanel({
                                 e.currentTarget.style.borderColor = "rgba(16, 185, 129, 0.25)";
                             }}
                         >
-                            <i className="bi bi-arrow-left-short" style={{ fontSize: "16px", fontWeight: "bold" }} /> ย้อนกลับ
+                            <i className="bi bi-arrow-left-short" style={{ fontSize: "16px", fontWeight: "bold" }} /> <span style={{ whiteSpace: "nowrap" }}>ย้อนกลับ</span>
                         </button>
                         <button
                             className="prp-btn-primary"
                             onClick={() => handleSave()}
                             disabled={!projectName.trim() || isDuplicateProjectName || saveState === "saving"}
                             style={{
-                                flex: 1.2,
-                                height: "42px",
-                                padding: 0,
+                                flex: isMobile ? 1.5 : 1.2,
+                                minHeight: "42px",
+                                height: "auto",
+                                padding: "6px 4px",
                                 margin: 0,
                                 boxSizing: "border-box",
                                 fontSize: "12.5px",
@@ -1858,7 +1859,7 @@ export function ParcelResultsPanel({
                                 display: "flex",
                                 alignItems: "center",
                                 justifyContent: "center",
-                                gap: "4px",
+                                gap: "6px",
                                 cursor: !projectName.trim() || isDuplicateProjectName || saveState === "saving" ? "not-allowed" : "pointer",
                                 opacity: !projectName.trim() || isDuplicateProjectName || saveState === "saving" ? 0.6 : 1,
                                 color: "#fff",
@@ -1867,11 +1868,21 @@ export function ParcelResultsPanel({
                             }}
                         >
                             {saveState === "saving" ? (
-                                <><span className="s1-spin" style={{ width: 14, height: 14, border: "2px solid rgba(255,255,255,0.3)", borderTopColor: "#fff" }} /> บันทึก...</>
+                                <><span className="s1-spin" style={{ width: 14, height: 14, border: "2px solid rgba(255,255,255,0.3)", borderTopColor: "#fff" }} /> <span style={{ whiteSpace: "nowrap" }}>บันทึก...</span></>
                             ) : saveState === "done" ? (
-                                <><i className="bi bi-check-circle-fill" /> บันทึกแล้ว</>
+                                <><i className="bi bi-check-circle-fill" /> <span style={{ whiteSpace: "nowrap" }}>บันทึกแล้ว</span></>
                             ) : (
-                                <><i className="bi bi-save" /> บันทึกข้อมูลประมวลผล</>
+                                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                                    <i className="bi bi-save" style={{ fontSize: isMobile ? 16 : 14 }} />
+                                    {isMobile ? (
+                                        <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", lineHeight: 1.15, textAlign: "left", fontSize: 11 }}>
+                                            <span>บันทึกข้อมูล</span>
+                                            <span>ประมวลผล</span>
+                                        </div>
+                                    ) : (
+                                        <span style={{ whiteSpace: "nowrap" }}>บันทึกข้อมูลประมวลผล</span>
+                                    )}
+                                </div>
                             )}
                         </button>
                         {onBack && (
@@ -1908,7 +1919,7 @@ export function ParcelResultsPanel({
                                     e.currentTarget.style.borderColor = "rgba(100, 116, 139, 0.22)";
                                 }}
                             >
-                                <i className="bi bi-house-door" style={{ fontSize: "13px" }} /> ขั้นตอนที่ 1
+                                <i className="bi bi-house-door" style={{ fontSize: "13px" }} /> <span style={{ whiteSpace: "nowrap" }}>ขั้นตอนที่ 1</span>
                             </button>
                         )}
                     </div>
