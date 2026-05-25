@@ -76,6 +76,7 @@ function MapDrawContent() {
   const [searchRunning, setSearchRunning] = useState(false);
   const [searchCount, setSearchCount] = useState<number | null>(null);
   const [searchErr, setSearchErr] = useState<string | null>(null);
+  const [errorPopup, setErrorPopup] = useState<{ title: string; desc: string; } | null>(null);
   const [searchTruncated, setSearchTruncated] = useState(false);
   const [parcelFeatures, setParcelFeatures] = useState<GeoJSON.Feature[]>([]);
   const [dragOver, setDragOver] = useState(false);
@@ -1356,15 +1357,53 @@ function MapDrawContent() {
               },
             });
           }
-          if (result.status.status === "error" && luPolygons.length === 0) {
-            const msg = result.status.status_code === "E01"
-              ? `แปลงที่ ${pi + 1}: พื้นที่วาดอยู่นอกจังหวัดที่รองรับ`
-              : `แปลงที่ ${pi + 1}: ไม่พบข้อมูลการใช้ที่ดิน`;
-            console.warn(msg);
+          if (result.status.status === "error") {
+            const sc = result.status.status_code;
+            throw new Error(`[API_ERR]${sc || ""}|${result.status.message || ""}`);
           }
         } catch (parcelErr) {
           console.error(`[KeptCarbon] plantation-info error parcel ${pi}:`, parcelErr);
-          // Fallback: use drawn parcel geometry when API fails
+          
+          const errMsg = parcelErr instanceof Error ? parcelErr.message : String(parcelErr);
+          
+          let sc = "";
+          let backendMessage = "";
+          
+          if (errMsg.startsWith("[API_ERR]")) {
+             const parts = errMsg.substring(9).split("|");
+             sc = parts[0];
+             backendMessage = parts[1] || "";
+          } else {
+             let backendErrData: any = null;
+             const jsonMatch = errMsg.match(/Backend API error: \d+ (\{.*\})/);
+             if (jsonMatch && jsonMatch[1]) {
+               try { backendErrData = JSON.parse(jsonMatch[1]); } catch (e) {}
+             }
+             sc = backendErrData?.status_code || backendErrData?.status?.status_code || "";
+             backendMessage = backendErrData?.message || backendErrData?.status?.message || "";
+          }
+          
+          if (sc === "E01" || errMsg.includes('"status_code":"E01"') || errMsg.includes('"E01"')) {
+            throw new Error("พื้นที่ที่คุณระบุไม่อยู่ในขอบเขตประเทศไทย กรุณาลบแล้ววาดแปลงใหม่");
+          }
+          if (sc === "E02" || errMsg.includes('"status_code":"E02"') || errMsg.includes('"E02"')) {
+            throw new Error("พื้นที่ที่คุณระบุไม่อยู่ในจังหวัดที่ให้บริการ กรุณาลบแล้ววาดแปลงใหม่");
+          }
+          if (sc === "E04" || errMsg.includes('"status_code":"E04"') || errMsg.includes('"E04"')) {
+            throw new Error("ไม่พบข้อมูลปีปลูกในฐานข้อมูล กรุณาระบุปีปลูก (พ.ศ.) ในช่องกรอกข้อมูล");
+          }
+          
+          // If it's a validation error or known English error, we should probably throw it too, 
+          // but for general errors, maybe we can fallback to allow the user to manually enter data
+          const engMsg = backendMessage.toLowerCase();
+          if (engMsg.includes("invalid") && engMsg.includes("polygon") || errMsg.toLowerCase().includes("invalid polygon")) {
+              throw new Error("รูปทรงหรือขอบเขตพื้นที่ไม่ถูกต้อง กรุณาลบแล้ววาดแปลงใหม่");
+          }
+          if (engMsg.includes("geometry") || errMsg.toLowerCase().includes("geometry")) {
+              throw new Error("ข้อมูลพิกัดพื้นที่ไม่ถูกต้อง กรุณาลบแล้ววาดแปลงใหม่");
+          }
+          
+          // Fallback: use drawn parcel geometry when API fails for other unknown reasons
           allFeatures.push({
             type: "Feature",
             geometry: parcel.geometry,
@@ -1422,7 +1461,26 @@ function MapDrawContent() {
         setStatus(`พบ ${allLUStats.length} พื้นที่ใช้ที่ดิน${rubberNote}`);
       }
     } catch (err) {
-      setSearchErr(err instanceof Error ? err.message : String(err));
+      const errorMsg = err instanceof Error ? err.message : String(err);
+      
+      if (errorMsg === "พื้นที่ที่คุณระบุไม่อยู่ในขอบเขตประเทศไทย กรุณาลบแล้ววาดแปลงใหม่" || 
+          errorMsg === "พื้นที่ที่คุณระบุไม่อยู่ในจังหวัดที่ให้บริการ กรุณาลบแล้ววาดแปลงใหม่" ||
+          errorMsg === "รูปทรงหรือขอบเขตพื้นที่ไม่ถูกต้อง กรุณาลบแล้ววาดแปลงใหม่" ||
+          errorMsg === "ข้อมูลพิกัดพื้นที่ไม่ถูกต้อง กรุณาลบแล้ววาดแปลงใหม่") {
+          
+          setErrorPopup({
+            title: "ไม่สามารถดำเนินการได้",
+            desc: errorMsg
+          });
+          clearDraw();
+      } else if (errorMsg === "ไม่พบข้อมูลปีปลูกในฐานข้อมูล กรุณาระบุปีปลูก (พ.ศ.) ในช่องกรอกข้อมูล") {
+          setErrorPopup({
+            title: "แจ้งเตือนข้อมูล",
+            desc: errorMsg
+          });
+      } else {
+        setSearchErr(errorMsg);
+      }
     } finally {
       setSearchRunning(false);
     }
@@ -2221,6 +2279,55 @@ function MapDrawContent() {
           </div>
         </div>
       )}
+      {/* Error Validation Popup */}
+      {errorPopup && (
+        <div style={{
+          position: "fixed", inset: 0, zIndex: 99999,
+          background: "rgba(15,23,42,0.4)", backdropFilter: "blur(4px)",
+          display: "flex", alignItems: "center", justifyContent: "center", padding: 20
+        }}>
+          <div style={{
+            background: "#fff", borderRadius: 20, padding: "28px 24px 24px",
+            width: "100%", maxWidth: 360, textAlign: "center",
+            boxShadow: "0 20px 40px rgba(0,0,0,0.15), 0 0 0 1px rgba(0,0,0,0.05)",
+            animation: "popupIn 0.3s cubic-bezier(0.16, 1, 0.3, 1)"
+          }}>
+            <div style={{
+              width: 56, height: 56, borderRadius: "50%",
+              background: errorPopup.title === "แจ้งเตือนข้อมูล" ? "#fef08a" : "#fee2e2",
+              color: errorPopup.title === "แจ้งเตือนข้อมูล" ? "#ca8a04" : "#ef4444",
+              display: "flex", alignItems: "center", justifyContent: "center",
+              fontSize: 28, margin: "0 auto 16px"
+            }}>
+              <i className={`bi ${errorPopup.title === "แจ้งเตือนข้อมูล" ? "bi-info-circle-fill" : "bi-x-circle-fill"}`} />
+            </div>
+            <h3 style={{ fontSize: 18, fontWeight: 800, color: "#0f172a", marginBottom: 8, lineHeight: 1.3 }}>
+              {errorPopup.title}
+            </h3>
+            <p style={{ fontSize: 14, color: "#475569", lineHeight: 1.5, marginBottom: 24 }}>
+              {errorPopup.desc}
+            </p>
+            <button
+              onClick={() => setErrorPopup(null)}
+              style={{
+                width: "100%", padding: "12px", borderRadius: 12,
+                background: errorPopup.title === "แจ้งเตือนข้อมูล" ? "#ca8a04" : "#ef4444",
+                color: "#fff", border: "none", fontSize: 15, fontWeight: 700,
+                cursor: "pointer", transition: "all 0.2s"
+              }}
+            >
+              ตกลง
+            </button>
+          </div>
+          <style>{`
+            @keyframes popupIn {
+              from { opacity: 0; transform: scale(0.95) translateY(10px); }
+              to { opacity: 1; transform: scale(1) translateY(0); }
+            }
+          `}</style>
+        </div>
+      )}
+
     </div>
   );
 }

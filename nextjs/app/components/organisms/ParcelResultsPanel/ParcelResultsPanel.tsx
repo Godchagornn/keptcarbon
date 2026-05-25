@@ -142,6 +142,54 @@ function parseRai(v: unknown): number {
 function getFriendlyErrorMessage(err: unknown, plots: PlotInfo[], plotForms: PlotFormData[]): string {
     const msg = err instanceof Error ? err.message : String(err);
 
+    // Try to parse backend error JSON if possible
+    let backendErrData: any = null;
+    const jsonMatch = msg.match(/Backend API error: \d+ (\{.*\})/);
+    if (jsonMatch && jsonMatch[1]) {
+        try {
+            backendErrData = JSON.parse(jsonMatch[1]);
+        } catch (e) {
+            // ignore parse errors
+        }
+    }
+
+    // Check for specific error codes (E01, E02, E04)
+    const statusCode = backendErrData?.status_code || backendErrData?.status?.status_code;
+    const backendMessage = backendErrData?.message || backendErrData?.status?.message || "";
+
+    if (statusCode === "E01" || msg.includes('"status_code":"E01"') || msg.includes('"E01"')) {
+        return "พื้นที่ที่คุณระบุไม่อยู่ในขอบเขตประเทศไทย กรุณาลบแล้ววาดแปลงใหม่";
+    }
+    if (statusCode === "E02" || msg.includes('"status_code":"E02"') || msg.includes('"E02"')) {
+        return "พื้นที่ที่คุณระบุไม่อยู่ในจังหวัดที่ให้บริการ กรุณาลบแล้ววาดแปลงใหม่";
+    }
+    if (statusCode === "E04" || msg.includes('"status_code":"E04"') || msg.includes('"E04"')) {
+        return "ไม่พบข้อมูลปีปลูกในฐานข้อมูล กรุณาระบุปีปลูก (พ.ศ.) ในช่องกรอกข้อมูล";
+    }
+
+    // Translate English errors from the backend
+    if (backendMessage) {
+        if (backendErrData?.message_th) {
+            return backendErrData.message_th;
+        }
+        if (backendErrData?.status?.message_th) {
+            return backendErrData.status.message_th;
+        }
+        
+        const engMsg = backendMessage.toLowerCase();
+        if (engMsg.includes("not found")) return "ไม่พบข้อมูลในระบบ กรุณาตรวจสอบอีกครั้ง";
+        if (engMsg.includes("invalid") && engMsg.includes("polygon")) return "รูปทรงหรือขอบเขตพื้นที่ไม่ถูกต้อง กรุณาลบแล้ววาดแปลงใหม่";
+        if (engMsg.includes("invalid")) return "ข้อมูลไม่ถูกต้อง กรุณาตรวจสอบอีกครั้ง";
+        if (engMsg.includes("geometry")) return "ข้อมูลพิกัดพื้นที่ไม่ถูกต้อง กรุณาลบแล้ววาดแปลงใหม่";
+        if (engMsg.includes("timeout")) return "ระบบใช้เวลาประมวลผลนานเกินไป กรุณาลองใหม่อีกครั้ง";
+        if (engMsg.includes("missing")) return "ข้อมูลไม่ครบถ้วน กรุณาตรวจสอบการกรอกข้อมูล";
+        if (engMsg.includes("overlap")) return "พื้นที่ทับซ้อนกับแปลงอื่น กรุณาลบแล้ววาดแปลงใหม่";
+        if (engMsg.includes("error") || engMsg.includes("failed")) return "ระบบเกิดข้อผิดพลาดในการประมวลผล กรุณาลองใหม่อีกครั้ง";
+        
+        // General prefix for unknown backend messages translated
+        return `ระบบไม่สามารถประมวลผลได้: ${backendMessage} กรุณาลองใหม่อีกครั้ง`;
+    }
+
     // Backend 500 errors
     if (msg.includes("Backend API error: 500")) {
         // Check if any plot is "existing" with no planting data — likely cause
@@ -869,6 +917,13 @@ export function ParcelResultsPanel({
         try {
             const responses = await estimateCarbon(polygons);
             console.log("[KeptCarbon] Backend responses:", JSON.stringify(responses, null, 2));
+            
+            // Check for errors in the responses (e.g., E04)
+            const errResp = responses.find((r: any) => r.status?.status === "error");
+            if (errResp) {
+                throw new Error(`Backend API error: 200 ${JSON.stringify(errResp)}`);
+            }
+            
             setBackendResponses(responses);
 
             const results: CarbonResult[] = [];
@@ -2077,6 +2132,32 @@ export function ParcelResultsPanel({
 
                                 {expandedResultIdx === i && (
                                     <>
+                                        {/* Current Carbon Overview Card */}
+                                        <div style={{ padding: "14px 14px 0" }}>
+                                            <div style={{
+                                                background: "linear-gradient(to right, rgba(13,148,136,0.08), rgba(20,184,166,0.03))",
+                                                border: "1px solid rgba(13,148,136,0.2)",
+                                                borderRadius: 12,
+                                                padding: "12px 16px",
+                                                display: "flex",
+                                                justifyContent: "space-between",
+                                                alignItems: "center"
+                                            }}>
+                                                <div>
+                                                    <div style={{ fontSize: 11, color: "#0f766e", fontWeight: 700, marginBottom: 4, display: "flex", alignItems: "center", gap: 6 }}>
+                                                        <i className="bi bi-cloud-arrow-down-fill" /> คาร์บอนสะสมปัจจุบัน
+                                                    </div>
+                                                    <div style={{ fontWeight: 800, color: "#0d9488", fontSize: isMobile ? 20 : 24, lineHeight: 1.1 }}>
+                                                        {Math.floor(cr.co2Now).toLocaleString()} <span style={{ fontSize: 14, fontWeight: 600, opacity: 0.8 }}>tCO₂</span>
+                                                    </div>
+                                                </div>
+                                                <div style={{ textAlign: "right", background: "#fff", padding: "6px 12px", borderRadius: 8, border: "1px solid rgba(13,148,136,0.15)", boxShadow: "0 2px 4px rgba(0,0,0,0.02)" }}>
+                                                    <div style={{ fontSize: 10, color: "#64748b", fontWeight: 700 }}>อายุต้นยาง</div>
+                                                    <div style={{ fontSize: 14, color: "#334155", fontWeight: 800 }}>{cr.age} <span style={{ fontSize: 11 }}>ปี</span></div>
+                                                </div>
+                                            </div>
+                                        </div>
+
                                         {/* Plot chart */}
                                         <div style={{ padding: "12px 12px 4px" }}>
                                             <CarbonBarChart pts={plotPts} isMobile={isMobile} narrowMode={!isMobile} />
