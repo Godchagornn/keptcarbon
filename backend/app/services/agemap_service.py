@@ -165,7 +165,3 @@ class AgeMapService:
 
         return formatted_shares
         
-
-
-
-

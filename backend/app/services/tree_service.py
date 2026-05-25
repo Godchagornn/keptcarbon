@@ -84,11 +84,3 @@ class TreeService:
                 "THUS, USED CALCULATED TREE COUNT."
             )
         }
-
-
-
-
-
-
-
-

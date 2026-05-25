@@ -13,7 +13,6 @@ import {
   validateAndFixGeoJSON,
   detectUtmFromPrj,
   detectUtmZoneAuto,
-  truncateCoords,
   sanitizePolygonForApi,
 } from "@/lib/map-utils";
 import { getPlantationInfo } from "@/lib/carbon-api";
@@ -21,14 +20,6 @@ import { ParcelResultsPanel } from "@/app/components/organisms";
 import { useSearchParams } from "next/navigation";
 
 type Tab = "draw" | "shp";
-type NdviStatus = number | null | "loading" | "error";
-type BfastStatus = {
-  state: "idle" | "loading" | "done" | "error";
-  plantingYear?: number | null;
-  age?: number | null;
-  confidence?: number;
-  ndviLatest?: number | null;
-};
 
 function MapDrawContent() {
   const { user } = useAuth();
@@ -46,6 +37,19 @@ function MapDrawContent() {
   const searchAbortRef = useRef<AbortController | null>(null);
   
   const searchParams = useSearchParams();
+
+  const projNameParam = useMemo(() => {
+    let pName = searchParams?.get("project");
+    if (!pName && typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      pName = params.get("project");
+    }
+    return pName || "";
+  }, [searchParams]);
+
+  const handleExitProject = useCallback(() => {
+    window.location.href = "/map-draw";
+  }, []);
 
   // Draw state
   const [drawing, setDrawing] = useState(false);
@@ -91,7 +95,7 @@ function MapDrawContent() {
   const [isPanelOpen, setIsPanelOpen] = useState(false);
 
   // Area Validation State
-  const [areaError, setAreaError] = useState<{ rai: number; sqm: number } | null>(null);
+  const [areaError, setAreaError] = useState<{ rai: number; sqm: number; tooSmall?: boolean } | null>(null);
 
   // Drawn boundary geometry (set when search is confirmed)
   const [drawnGeometry, setDrawnGeometry] = useState<GeoJSON.Geometry | null>(null);
@@ -135,6 +139,15 @@ function MapDrawContent() {
       }
     }
   }, [drawnParcels]);
+
+  // Hide vertex nodes when not on step 1 (not editable at step 2/3)
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !mapLoadedRef.current) return;
+    const vis = currentStep >= 3 ? "none" : "visible";
+    if (map.getLayer("plot-verts-l")) map.setLayoutProperty("plot-verts-l", "visibility", vis);
+    if (map.getLayer("draw-verts-l")) map.setLayoutProperty("draw-verts-l", "visibility", vis);
+  }, [currentStep]);
 
   const totalDrawnArea = useMemo(() => {
     return drawnParcels.reduce((acc, p) => {
@@ -799,6 +812,7 @@ function MapDrawContent() {
               ...p,
               plot_index: String(i + 1),
               grow_area: p.areaRai,
+              grow_year: p.plantYearBE,   // computePlot reads grow_year for plantYearBE
               province: p.province
             }
           }));
@@ -981,6 +995,8 @@ function MapDrawContent() {
     if (!map) return;
     const onClick = (e: maplibregl.MapMouseEvent) => {
       if (!drawingRef.current) return;
+      // skip click if it was the end of a vertex drag
+      if (wasDragging) { wasDragging = false; return; }
       const pts = vertsRef.current;
 
       // Auto-close polygon if clicking near the first point
@@ -1006,57 +1022,82 @@ function MapDrawContent() {
       finishDraw();
     };
 
-    // Custom edit logic
-    const onLineClick = (e: maplibregl.MapMouseEvent) => {
-      // Edit logic is disabled for multi-parcel for now to keep it simple, 
-      // but we could implement it by finding which parcel was clicked.
-      if (drawingRef.current) return;
-    };
-
-    let dragIdx = -1;
-    const onMove = (ev: maplibregl.MapMouseEvent) => {
-      if (dragIdx === -1) return;
-      vertsRef.current[dragIdx] = [ev.lngLat.lng, ev.lngLat.lat];
-      previewDraw();
-    };
-    const onUp = () => {
-      if (dragIdx !== -1) {
-        dragIdx = -1;
-        map.getCanvas().style.cursor = 'grab';
-        map.off('mousemove', onMove);
-        map.off('mouseup', onUp);
-        if (!drawingRef.current && vertsRef.current.length >= 3) {
-          finishDraw(true);
-        }
-      }
-    };
-    const onVertsDown = (e: maplibregl.MapMouseEvent) => {
-      e.preventDefault();
-      const pts = vertsRef.current;
-      let minDist = Infinity;
-      pts.forEach((p, i) => {
-        const d = Math.hypot(p[0] - e.lngLat.lng, p[1] - e.lngLat.lat);
-        if (d < minDist) { minDist = d; dragIdx = i; }
-      });
-      map.getCanvas().style.cursor = 'grabbing';
-      map.on('mousemove', onMove);
-      map.on('mouseup', onUp);
-    };
-
     const onContextMenu = (e: maplibregl.MapMouseEvent) => {
       e.preventDefault();
       if (!drawingRef.current || vertsRef.current.length < 3) return;
       finishDraw();
     };
 
+    // ── Vertex drag during drawing mode ──────────────────────────────────────
+    let dragIdx = -1;
+    let wasDragging = false;
+
+    const SNAP_PX = 16; // pixel radius to hit a vertex
+
+    const onDrawMouseMove = (ev: maplibregl.MapMouseEvent) => {
+      if (!drawingRef.current) return;
+      if (dragIdx !== -1) {
+        // actively dragging
+        wasDragging = true;
+        vertsRef.current[dragIdx] = [ev.lngLat.lng, ev.lngLat.lat];
+        previewDraw();
+        return;
+      }
+      // hover cursor: change to 'move' when near any temp vertex
+      const pts = vertsRef.current;
+      let near = false;
+      for (const p of pts) {
+        const proj = map.project(p as [number, number]);
+        if (Math.hypot(proj.x - ev.point.x, proj.y - ev.point.y) < SNAP_PX) { near = true; break; }
+      }
+      map.getCanvas().style.cursor = near ? 'move' : 'crosshair';
+    };
+
+    const onDrawMouseDown = (e: maplibregl.MapMouseEvent) => {
+      if (!drawingRef.current) return;
+      const pts = vertsRef.current;
+      if (!pts.length) return;
+
+      // find nearest temp vertex in screen space
+      let nearIdx = -1;
+      let minD = Infinity;
+      pts.forEach((p, i) => {
+        const proj = map.project(p as [number, number]);
+        const d = Math.hypot(proj.x - e.point.x, proj.y - e.point.y);
+        if (d < SNAP_PX && d < minD) { minD = d; nearIdx = i; }
+      });
+
+      if (nearIdx !== -1) {
+        dragIdx = nearIdx;
+        wasDragging = false;
+        map.getCanvas().style.cursor = 'grabbing';
+        map.dragPan.disable();
+      }
+    };
+
+    const onDrawMouseUp = () => {
+      if (dragIdx !== -1) {
+        dragIdx = -1;
+        map.getCanvas().style.cursor = 'crosshair';
+        map.dragPan.enable();
+      }
+    };
+
     map.on("click", onClick);
     map.on("dblclick", onDbl);
     map.on("contextmenu", onContextMenu);
+    map.on("mousemove", onDrawMouseMove);
+    map.on("mousedown", onDrawMouseDown);
+    map.on("mouseup", onDrawMouseUp);
 
     return () => {
       map.off("click", onClick);
       map.off("dblclick", onDbl);
       map.off("contextmenu", onContextMenu);
+      map.off("mousemove", onDrawMouseMove);
+      map.off("mousedown", onDrawMouseDown);
+      map.off("mouseup", onDrawMouseUp);
+      map.dragPan.enable();
     };
   }, [previewDraw, finishDraw]);
 
@@ -1194,7 +1235,7 @@ function MapDrawContent() {
 
     const totalRai = totalDrawnArea / 1600;
     if (totalRai < 1) {
-      setAreaError({ rai: totalRai, sqm: totalDrawnArea });
+      setAreaError({ rai: totalRai, sqm: totalDrawnArea, tooSmall: true });
       return;
     }
 
@@ -1330,8 +1371,7 @@ function MapDrawContent() {
 
   const handleProjectTypeChange = useCallback((type: "replanting" | "existing") => {
     setProjectType(type);
-    runPlantationInfo(type);
-  }, [runPlantationInfo]);
+  }, []);
 
   useEffect(() => {
     runPlantationInfoRef.current = runPlantationInfo;
@@ -1437,7 +1477,7 @@ function MapDrawContent() {
       }
       const totalRai = totalSqm / 1600;
       if (totalRai < 1) {
-        setAreaError({ rai: totalRai, sqm: totalSqm });
+        setAreaError({ rai: totalRai, sqm: totalSqm, tooSmall: true });
       } else {
         setAreaError(null);
       }
@@ -1774,6 +1814,92 @@ function MapDrawContent() {
           </button>
         </div>
 
+        {/* ── Custom Stepper Styles Override ── */}
+        <style>{`
+          .mds-stepper .mds-step-circle {
+            width: 30px !important;
+            height: 30px !important;
+            min-width: 30px !important;
+            font-size: 11.5px !important;
+          }
+          .mds-stepper .mds-step:not(:last-of-type)::after {
+            top: 15px !important;
+            left: calc(50% + 15px) !important;
+            right: calc(-50% + 15px) !important;
+          }
+          .mds-stepper .mds-step.active .mds-step-circle {
+            transform: scale(1.1) !important;
+          }
+          .mds-stepper .mds-step-label {
+            font-size: 10.5px !important;
+            font-weight: 700 !important;
+          }
+        `}</style>
+
+        {/* ── Project Mode Banner ── */}
+        {projNameParam && (
+          <div style={{
+            background: "#ffffff",
+            borderBottom: "1px solid #e2e8f0",
+            padding: "14px 20px",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: "14px",
+            boxSizing: "border-box"
+          }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "12px", overflow: "hidden" }}>
+              <div style={{
+                width: "36px",
+                height: "36px",
+                borderRadius: "10px",
+                background: "rgba(16, 185, 129, 0.08)",
+                border: "1px solid rgba(16, 185, 129, 0.15)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                flexShrink: 0
+              }}>
+                <i className="bi bi-folder-fill" style={{ color: "#10b981", fontSize: "18px" }} />
+              </div>
+              <div style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                <span style={{ fontSize: "12.5px", color: "#64748b", fontWeight: 600, display: "block", lineHeight: 1.25 }}>แก้ไขโครงการ</span>
+                <strong style={{ fontSize: "18px", color: "#0f172a", fontWeight: 800, display: "block", marginTop: "2px" }} title={projNameParam}>{projNameParam}</strong>
+              </div>
+            </div>
+            <button
+              onClick={handleExitProject}
+              style={{
+                background: "#ffffff",
+                color: "#dc2626",
+                border: "1px solid rgba(220, 38, 38, 0.25)",
+                borderRadius: "10px",
+                padding: "8px 16px",
+                fontSize: "13.5px",
+                fontWeight: 600,
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                gap: "6px",
+                transition: "all 0.2s",
+                whiteSpace: "nowrap",
+                flexShrink: 0,
+                boxShadow: "0 1px 2px rgba(0,0,0,0.02)"
+              }}
+              onMouseOver={(e) => {
+                e.currentTarget.style.background = "rgba(220, 38, 38, 0.04)";
+                e.currentTarget.style.borderColor = "rgba(220, 38, 38, 0.45)";
+              }}
+              onMouseOut={(e) => {
+                e.currentTarget.style.background = "#ffffff";
+                e.currentTarget.style.borderColor = "rgba(220, 38, 38, 0.25)";
+              }}
+            >
+              <i className="bi bi-x-circle" style={{ fontSize: "15px" }} /> ออกจากโครงการ
+            </button>
+          </div>
+        )}
+
         {/* ── Step Tracker ── */}
         <div className="mds-stepper">
           <div className="mds-steps-row">
@@ -1841,7 +1967,7 @@ function MapDrawContent() {
                       <>
                         <div className="mds-draw-hint">
                           <div className="mds-dot-pulse" />
-                          คลิกบนแผนที่เพื่อเพิ่มจุด · <strong>Double-click</strong> หรือกดปุ่ม <strong>"เสร็จสิ้น"</strong> เพื่อจบการวาด
+                          คลิกบนแผนที่เพื่อเพิ่มจุด · <strong>คลิกขวา</strong>, <strong>Double-click</strong> หรือกดปุ่ม <strong>"เสร็จสิ้น"</strong> เพื่อจบการวาด
                         </div>
                         <div style={{ display: "flex", gap: "8px", marginTop: "10px", flexWrap: "wrap" }}>
                           <button
@@ -1865,7 +1991,16 @@ function MapDrawContent() {
                           <ol className="mds-instr-list">
                             <li>คลิกปุ่ม <strong>&ldquo;เริ่มวาดแปลง&rdquo;</strong></li>
                             <li>คลิกบนแผนที่เพื่อเพิ่มจุดขอบเขต (อย่างน้อย 3 จุด)</li>
-                            <li>กดปุ่ม <strong>&ldquo;เสร็จสิ้น วาดแปลง&rdquo;</strong> หรือ Double-click เพื่อจบการวาด</li>
+                            <li>
+                              <span>จบการวาดด้วย</span>
+                              <span style={{ display: "inline-flex", flexWrap: "wrap", alignItems: "center", gap: "5px", marginLeft: "5px" }}>
+                                <span style={{ background: "rgba(5,150,105,0.12)", color: "#047857", padding: "2px 9px", borderRadius: "6px", fontWeight: 700, fontSize: "12px", whiteSpace: "nowrap" }}>เสร็จสิ้น</span>
+                                <span style={{ color: "#cbd5e1", fontWeight: 400 }}>·</span>
+                                <span style={{ background: "rgba(5,150,105,0.12)", color: "#047857", padding: "2px 9px", borderRadius: "6px", fontWeight: 700, fontSize: "12px", whiteSpace: "nowrap" }}>คลิกขวา</span>
+                                <span style={{ color: "#cbd5e1", fontWeight: 400 }}>·</span>
+                                <span style={{ background: "rgba(5,150,105,0.12)", color: "#047857", padding: "2px 9px", borderRadius: "6px", fontWeight: 700, fontSize: "12px", whiteSpace: "nowrap" }}>Double-click</span>
+                              </span>
+                            </li>
                           </ol>
                         )}
 
@@ -1981,8 +2116,6 @@ function MapDrawContent() {
                 onDeleteParcel={deleteParcel}
                 onDrawMore={startDrawFlow}
                 isDrawing={drawing}
-                onFinishDraw={() => finishDraw()}
-                onCancelDraw={cancelDrawMode}
                 onLandUseChange={handleLandUseChange}
                 onProjectTypeChange={handleProjectTypeChange}
               />
@@ -2008,13 +2141,19 @@ function MapDrawContent() {
               <i className="bi bi-exclamation-triangle-fill" />
             </div>
             <div className="mds-area-popup-content">
-              <h3>พื้นที่แปลงใหญ่เกินไป</h3>
+              <h3>{areaError.tooSmall ? "พื้นที่แปลงเล็กเกินไป" : "พื้นที่แปลงใหญ่เกินไป"}</h3>
               <p>
                 ขนาดแปลงที่วาดคือ <strong>{areaError.rai.toFixed(2)} ไร่</strong> ({Math.round(areaError.sqm).toLocaleString()} ตร.ม.)
-                ซึ่งเกินกว่าเกณฑ์สูงสุด <strong>500 ไร่</strong>
+                {areaError.tooSmall
+                  ? <> ซึ่งน้อยกว่าเกณฑ์ขั้นต่ำ <strong>1 ไร่</strong></>
+                  : <> ซึ่งเกินกว่าเกณฑ์สูงสุด <strong>500 ไร่</strong></>
+                }
               </p>
               <div className="mds-area-popup-hint">
-                กรุณาปรับลดขอบเขตแปลง หรือแบ่งเป็นหลายแปลง
+                {areaError.tooSmall
+                  ? "กรุณาวาดแปลงใหม่ให้มีพื้นที่อย่างน้อย 1 ไร่"
+                  : "กรุณาปรับลดขอบเขตแปลง หรือแบ่งเป็นหลายแปลง"
+                }
               </div>
             </div>
             <button className="mds-area-popup-close" onClick={() => setAreaError(null)}>

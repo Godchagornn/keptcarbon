@@ -22,17 +22,46 @@ export interface StatusMessage {
     message: string;
 }
 
+export interface CarbonValue {
+    value: number;
+    ci: number;
+    ci_lower: number;
+    ci_upper: number;
+}
+
 export interface YearlyEstimate {
     year: number;
-    total_carbon_tCO2e: number;
-    ci_lower_tCO2e: number;
-    ci_upper_tCO2e: number;
+    year_at: number;
+    age: number;
+    stocks: CarbonValue;
+    gain: CarbonValue;
+}
+
+export interface EstimatedParamYear {
+    value: number | string[];
+    note: string[] | null;
+    source: string;
+}
+
+export interface EstimatedParamSimple {
+    value: string | number;
+    note: string | null;
+    source: string;
+}
+
+export interface EstimatedParameters {
+    year_of_planting: EstimatedParamYear;
+    rubber_clone: EstimatedParamSimple;
+    tree_count: EstimatedParamSimple;
+    spacing_system: EstimatedParamSimple;
 }
 
 export interface EstimationResponse {
     polygon_id: string;
     status: StatusMessage;
+    ci?: number | null;
     carbon_profile?: YearlyEstimate[] | null;
+    estimated_parameters?: EstimatedParameters | null;
 }
 
 export interface LUPolygon {
@@ -113,4 +142,45 @@ export async function getPlantationInfo(polygon: {
  */
 export function getCurrentYearBE(): number {
     return new Date().getFullYear() + 543;
+}
+
+export interface DashboardRayongPerYear {
+    age: number;
+    plantYearBE: number;
+    areaRai: number;
+    carbonTco2: number;
+}
+
+export interface DashboardRayongAgeGroup {
+    key: string;
+    areaRai: number;
+    carbonTco2: number;
+    pct: number;
+}
+
+export interface DashboardRayongResponse {
+    status: string;
+    totalAreaRai: number;
+    totalCarbonTco2: number;
+    perYearRai: DashboardRayongPerYear[];
+    ageGroups: DashboardRayongAgeGroup[];
+}
+
+export interface DashboardDistrict {
+    name: string;
+    areaRai: number;
+    carbonTco2: number;
+    ageDist: Array<{ group: string; areaRai: number; carbonTco2: number }>;
+}
+
+export async function getDashboardRayong(): Promise<DashboardRayongResponse> {
+    const response = await fetch(`${API_BASE_URL}/dashboard/rayong-summary`);
+    if (!response.ok) throw new Error(`Dashboard API error: ${response.status}`);
+    return response.json();
+}
+
+export async function getDashboardDistricts(): Promise<{ districts: DashboardDistrict[] }> {
+    const response = await fetch(`${API_BASE_URL}/dashboard/districts-summary`);
+    if (!response.ok) throw new Error(`Dashboard API error: ${response.status}`);
+    return response.json();
 }

@@ -42,7 +42,7 @@
 
 /* ── Heading & subtitle ────────────────────────── */
 .modal-auth-heading {
-  font-size: 26px;
+  font-size: 28px;
   font-weight: 800;
   color: var(--kc-ink, #1a3d2b);
   letter-spacing: -0.4px;
@@ -50,7 +50,7 @@
 }
 
 .modal-auth-sub {
-  font-size: 13.5px;
+  font-size: 15px;
   color: var(--kc-sage, #5a7a65);
   line-height: 1.6;
   margin-bottom: 20px;
@@ -63,7 +63,7 @@
 
 .modal-auth-form-group label {
   display: block;
-  font-size: 11px;
+  font-size: 13px;
   font-weight: 700;
   color: var(--kc-sage, #5a7a65);
   text-transform: uppercase;
@@ -83,7 +83,7 @@
   top: 50%;
   transform: translateY(-50%);
   color: var(--kc-sage-soft, #738f7d);
-  font-size: 15px;
+  font-size: 16px;
   pointer-events: none;
   transition: color 0.2s;
 }
@@ -94,7 +94,7 @@
   background: #ffffff;
   border: 1.5px solid #e6f0ea;
   border-radius: 12px;
-  font-size: 14px;
+  font-size: 15px;
   color: var(--kc-ink, #1a3d2b);
   font-family: inherit;
   outline: none;
@@ -140,7 +140,7 @@
   border: none;
   border-radius: 14px;
   color: #fff;
-  font-size: 15px;
+  font-size: 16px;
   font-weight: 700;
   font-family: inherit;
   cursor: pointer;
@@ -171,7 +171,7 @@
   gap: 10px;
   padding: 12px 14px;
   border-radius: 11px;
-  font-size: 13.5px;
+  font-size: 15px;
   font-weight: 500;
   margin-bottom: 16px;
 }
@@ -197,7 +197,7 @@
   position: relative;
   text-align: center;
   color: var(--kc-sage-soft, #738f7d);
-  font-size: 11px;
+  font-size: 13px;
   letter-spacing: 1.6px;
   text-transform: uppercase;
   font-weight: 700;
@@ -220,7 +220,7 @@
 /* ── Footer links ──────────────────────────────── */
 .modal-auth-links {
   text-align: center;
-  font-size: 13.5px;
+  font-size: 15px;
   color: var(--kc-sage, #5a7a65);
 }
 
@@ -248,7 +248,7 @@
   border: none;
   border-radius: 14px;
   color: #fff;
-  font-size: 15px;
+  font-size: 16px;
   font-weight: 700;
   font-family: inherit;
   cursor: pointer;
@@ -276,6 +276,80 @@
 }
 
 /* ── Mobile adjustments ────────────────────────── */
+
+/* Google login button */
+.modal-btn-google {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  width: 100%;
+  padding: 13px 24px;
+  background: #4285F4; /* Google blue */
+  border: none;
+  border-radius: 14px;
+  color: #fff;
+  font-size: 16px;
+  font-weight: 700;
+  font-family: inherit;
+  cursor: pointer;
+  text-decoration: none;
+  letter-spacing: 0.3px;
+  box-shadow: 0 8px 24px rgba(66, 133, 244, 0.3);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.modal-btn-google:hover {
+  background: #357ae8;
+  transform: translateY(-2px);
+  box-shadow: 0 12px 32px rgba(66, 133, 244, 0.4);
+}
+
+.modal-btn-google:active {
+  transform: translateY(0);
+  box-shadow: 0 6px 18px rgba(66, 133, 244, 0.25);
+}
+
+.modal-btn-google svg {
+  flex-shrink: 0;
+}
+
+/* Facebook login button */
+.modal-btn-facebook {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  width: 100%;
+  padding: 13px 24px;
+  background: #1877F2; /* Facebook blue */
+  border: none;
+  border-radius: 14px;
+  color: #fff;
+  font-size: 16px;
+  font-weight: 700;
+  font-family: inherit;
+  cursor: pointer;
+  text-decoration: none;
+  letter-spacing: 0.3px;
+  box-shadow: 0 8px 24px rgba(24, 119, 242, 0.3);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.modal-btn-facebook:hover {
+  background: #155db2;
+  transform: translateY(-2px);
+  box-shadow: 0 12px 32px rgba(24, 119, 242, 0.4);
+}
+
+.modal-btn-facebook:active {
+  transform: translateY(0);
+  box-shadow: 0 6px 18px rgba(24, 119, 242, 0.25);
+}
+
+.modal-btn-facebook svg {
+  flex-shrink: 0;
+}
 @media (max-width: 540px) {
   .modal-auth-card {
     padding: 32px 20px 24px;
@@ -283,7 +357,7 @@
   }
 
   .modal-auth-heading {
-    font-size: 22px;
+    font-size: 24px;
   }
 
   .modal-auth-logo img {

@@ -279,7 +279,8 @@ export async function GET(request: NextRequest) {
           }
         : null,
       districts,
-      provinceTotal
+      provinceTotal,
+      luDataYear: 2567,
     });
   } catch (err) {
     console.error("Dashboard stats error:", err);

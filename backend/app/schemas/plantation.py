@@ -9,6 +9,11 @@ class StatusMessage(BaseModel):
     message: str
 
 
+class CarbonValueEstimate(BaseModel):
+    value: float
+    ci: float
+    ci_lower: float
+    ci_upper: float
 class ParamWithSource(BaseModel):
     # Can accept a single value (2010) or multiple values ([2010, 2015, 2018])
     value: Optional[Union[Any, List[Any]]] = None
@@ -54,6 +59,27 @@ class LUPolygon(BaseModel):
     area_percent: float = Field(..., description="Percentage of total area")
 
 
+# ── Estimated Parameters sub-models ──────────────────────────────────────────
+
+class EstimatedParamYear(BaseModel):
+    value: Union[int, List[str]]
+    note: Optional[List[str]] = None
+    source: str
+
+
+class EstimatedParamSimple(BaseModel):
+    value: Union[str, int, float]
+    note: Optional[str] = None
+    source: str
+
+
+class EstimatedParameters(BaseModel):
+    year_of_planting: EstimatedParamYear
+    rubber_clone: EstimatedParamSimple
+    tree_count: EstimatedParamSimple
+    spacing_system: EstimatedParamSimple
+
+
 class BasePlantationRequest(BaseModel):
     """The generalized blueprint for any plantation API call."""
     id: str = Field(..., description="Unique ID from the frontend map")
@@ -65,18 +91,16 @@ class BasePlantationRequest(BaseModel):
 
 class PlantationEstimateRequest(BasePlantationRequest):
     """Payload for /estimate (Extends base structure with metrics and flags)"""
-    # Spatiotemporal Inputs
     year_of_planting: Optional[int] = Field(None, description="Manual year. If None, extract from raster.")
     rubber_clone: Optional[str] = Field(None, description="Clone type for growth coefficients")
     tree_count: Optional[int] = Field(None, description="User-defined count. If None, calculate using area and spacing.")
     spacing_system: Optional[str] = Field(None, description="Standard spacing, e.g. '2.5x8' = 500 trees/ha")
-    
-    # THE ARCHITECTURAL WIN: Simple filtering flags instead of heavy geometries
     selected_lu_classes: List[str] = Field(
         #default=["A302"], 
         ...,
         description="List of LU codes, which identify areas the user wants included in carbon calculations"
     )
+
 
 class PlantationEstimationResponse(BaseModel):
     polygon_id: str
@@ -89,7 +113,6 @@ class PlantationEstimationResponse(BaseModel):
 
 class PlantationInfoRequest(BasePlantationRequest):
     """Payload for /plantation-info (Extends base structure with output CRS)"""
-    
     output_crs: Optional[str] = Field('EPSG:4326', description="Desired CRS for returned geometries, e.g. 'EPSG:4326'. Defaults to 'EPSG:4326' if not provided.")
 
 
