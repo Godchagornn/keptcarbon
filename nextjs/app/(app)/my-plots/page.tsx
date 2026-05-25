@@ -641,7 +641,6 @@ function PlotCard({ plot, index, onDelete, onEdit, expanded, onToggle, isMobile 
   const infoItems = [
     { label: "พื้นที่", val: plot.areaRai > 0 ? plot.areaRai.toFixed(2) : "—", unit: "ไร่", icon: "bi-grid-3x3", color: "#0d9488", bg: "rgba(13,148,136,0.12)" },
     { label: "สถานะแปลง", val: plantStatusLabel, unit: "", icon: "bi-check2-circle", color: "#f59e0b", bg: "rgba(245,158,11,0.12)" },
-    { label: "การใช้ที่ดิน", val: luVal, unit: "", icon: "bi-layers", color: "#84cc16", bg: "rgba(132,204,22,0.12)" },
     { label: "ปีที่ปลูก", val: plot.plantYearBE && plot.plantYearBE > 0 ? String(plot.plantYearBE) : "—", unit: "พ.ศ.", icon: "bi-calendar2-check", color: "#3b82f6", bg: "rgba(59,130,246,0.12)" },
     { label: "พันธุ์ยาง", val: plot.variety || "—", unit: "", icon: "bi-patch-check-fill", color: "#8b5cf6", bg: "rgba(139,92,246,0.12)" },
     { label: "ระยะปลูก", val: plot.spacing || "—", unit: "ม.", icon: "bi-arrows-fullscreen", color: "#f59e0b", bg: "rgba(245,158,11,0.12)" },
@@ -757,7 +756,7 @@ function PlotCard({ plot, index, onDelete, onEdit, expanded, onToggle, isMobile 
       {/* Info strip */}
       <div style={{
         display: "grid",
-        gridTemplateColumns: isMobile ? "repeat(2, 1fr)" : "repeat(7, 1fr)",
+        gridTemplateColumns: isMobile ? "repeat(2, 1fr)" : "repeat(6, 1fr)",
         borderTop: "1px solid #f1f5f9",
         borderBottom: "1px solid #f1f5f9",
         background: "#fafbfc"
@@ -769,8 +768,8 @@ function PlotCard({ plot, index, onDelete, onEdit, expanded, onToggle, isMobile 
               padding: isMobile ? "11px 14px" : "13px 16px",
               borderRight: isMobile
                 ? (i % 2 === 0 ? "1px solid #f1f5f9" : "none")
-                : (i < 6 ? "1px solid #f1f5f9" : "none"),
-              borderBottom: isMobile && i < 6 ? "1px solid #f1f5f9" : "none",
+                : (i < 5 ? "1px solid #f1f5f9" : "none"),
+              borderBottom: isMobile && i < 4 ? "1px solid #f1f5f9" : "none",
               gridColumn: "auto",
               display: "flex", flexDirection: "column", gap: 7
             }}
@@ -818,11 +817,11 @@ function PlotCard({ plot, index, onDelete, onEdit, expanded, onToggle, isMobile 
       {expanded && (
         <div style={{ padding: isMobile ? "12px 16px 20px" : "16px 20px 24px", background: "#fff", borderTop: "1px solid #f8fafc" }}>
           {isProcessed && barPts.length > 0 ? (
-            <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "3fr 2fr", gap: 20, alignItems: "start" }}>
-              <div style={{ minWidth: 0, overflow: "hidden" }}>
+            <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "3fr 2fr", gap: 20, alignItems: "stretch" }}>
+              <div style={{ minWidth: 0, overflow: "hidden", height: "100%" }}>
                 <CarbonBarChart pts={barPts} isMobile={isMobile} />
               </div>
-              <div style={{ background: "#fff", borderRadius: 16, border: "1px solid #e2e8f0", padding: "20px", display: "flex", flexDirection: "column", gap: 16, boxShadow: "0 4px 12px rgba(0,0,0,0.02)" }}>
+              <div style={{ background: "#fff", borderRadius: 16, border: "1px solid #e2e8f0", padding: "20px", display: "flex", flexDirection: "column", gap: 16, boxShadow: "0 4px 12px rgba(0,0,0,0.02)", height: "100%" }}>
                 <div style={{ display: "flex", flexDirection: "column", gap: 8, fontSize: 13, color: "#475569" }}>
                   {userEnteredYear ? (
                       // Case 1: User entered year
