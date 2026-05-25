@@ -1071,15 +1071,17 @@ function MapDrawContent() {
 
     let projName = searchParams?.get("project");
     let action = searchParams?.get("action");
-    
+    let plotId = searchParams?.get("plotId");
+
     // Fallback in case searchParams is not available
     if (!projName && typeof window !== 'undefined') {
       const params = new URLSearchParams(window.location.search);
       projName = params.get("project") || projName;
       action = params.get("action") || action;
+      plotId = params.get("plotId") || plotId;
     }
 
-    console.log("[AUTO-LOAD] Effect triggered", { projName, action, currentDrawnCount: drawnParcels.length });
+    console.log("[AUTO-LOAD] Effect triggered", { projName, action, plotId, currentDrawnCount: drawnParcels.length });
 
     if (projName && drawnParcels.length === 0) {
       try {
@@ -1087,7 +1089,11 @@ function MapDrawContent() {
         const storedRaw = localStorage.getItem(key);
         console.log("[AUTO-LOAD] LocalStorage storedRaw:", storedRaw);
         const stored = JSON.parse(storedRaw || "[]");
-        const projectPlots = stored.filter((p: any) => p.name === projName);
+        const allProjectPlots = stored.filter((p: any) => p.name === projName);
+        // ถ้ามี plotId ให้แสดงเฉพาะแปลงนั้น
+        const projectPlots = plotId
+          ? allProjectPlots.filter((p: any) => p.id === plotId)
+          : allProjectPlots;
         console.log("[AUTO-LOAD] Filtered projectPlots for:", projName, projectPlots);
 
         if (projectPlots.length > 0) {
