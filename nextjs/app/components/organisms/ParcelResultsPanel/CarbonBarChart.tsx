@@ -260,12 +260,12 @@ export function CarbonBarChart({
             <g key={i}>
               {/* อายุ (แทนที่ปีที่เดิม) */}
               {showAge && (
-                <text x={x} y={PT + iH + (isMobile ? 30 : 40)} textAnchor="middle" fontSize={isMobile ? 15 : 18} fill="#475569" fontWeight={700}>
+                <text x={x} y={PT + iH + (isMobile ? 30 : 40)} textAnchor="middle" fontSize={isMobile ? 18 : 22} fill="#475569" fontWeight={700}>
                   {p.age}
                 </text>
               )}
               {/* พ.ศ. */}
-              <text x={x} y={PT + iH + (showAge ? (isMobile ? 56 : 72) : (isMobile ? 30 : 40))} textAnchor="middle" fontSize={isMobile ? 15 : 18} fill="#94a3b8" fontWeight={500}>
+              <text x={x} y={PT + iH + (showAge ? (isMobile ? 56 : 72) : (isMobile ? 30 : 40))} textAnchor="middle" fontSize={isMobile ? 18 : 22} fill="#94a3b8" fontWeight={500}>
                 {p.yearBE}
               </text>
             </g>
@@ -277,9 +277,9 @@ export function CarbonBarChart({
 
         {/* X-axis row labels */}
         {showAge && (
-          <text x={isMobile ? 4 : PL - 14} y={PT + iH + (isMobile ? 30 : 40)} textAnchor={isMobile ? "start" : "end"} fontSize={isMobile ? 15 : 18} fill="#64748b" fontWeight={600}>อายุ</text>
+          <text x={isMobile ? 4 : PL - 14} y={PT + iH + (isMobile ? 30 : 40)} textAnchor={isMobile ? "start" : "end"} fontSize={isMobile ? 18 : 22} fill="#64748b" fontWeight={600}>อายุ</text>
         )}
-        <text x={isMobile ? 4 : PL - 14} y={PT + iH + (showAge ? (isMobile ? 56 : 72) : (isMobile ? 30 : 40))} textAnchor={isMobile ? "start" : "end"} fontSize={isMobile ? 15 : 18} fill="#64748b" fontWeight={600}>พ.ศ.</text>
+        <text x={isMobile ? 4 : PL - 14} y={PT + iH + (showAge ? (isMobile ? 56 : 72) : (isMobile ? 30 : 40))} textAnchor={isMobile ? "start" : "end"} fontSize={isMobile ? 18 : 22} fill="#64748b" fontWeight={600}>พ.ศ.</text>
 
         {/* Tooltip */}
         {hoverIdx !== null && hoveredPt && (() => {
@@ -328,11 +328,11 @@ export function CarbonBarChart({
                     <div style={{ color: "#fff", fontSize: isMobile ? 18 : 22, fontWeight: 600, marginBottom: 4, opacity: 0.85 }}>
                       กักเก็บคาร์บอน
                     </div>
-                    <div style={{ display: "flex", alignItems: "baseline", justifyContent: "center", gap: 8 }}>
-                      <span style={{ fontSize: isMobile ? 32 : 44, fontWeight: 800, color: "#fff", lineHeight: 1 }}>
+                    <div style={{ display: "flex", alignItems: "baseline", justifyContent: "center", gap: 6 }}>
+                      <span style={{ fontSize: isMobile ? 28 : 36, fontWeight: 800, color: "#fff", lineHeight: 1 }}>
                         {co2Val.toLocaleString("th-TH")}
                       </span>
-                      <span style={{ fontSize: isMobile ? 24 : 32, color: "rgba(255,255,255,0.65)", fontWeight: 500 }}>
+                      <span style={{ fontSize: isMobile ? 20 : 26, color: "rgba(255,255,255,0.65)", fontWeight: 500 }}>
                         ±{co2Ci}
                       </span>
                     </div>
