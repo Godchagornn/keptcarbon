@@ -397,16 +397,22 @@ const inputStyle: React.CSSProperties = { width: "100%", padding: "10px 14px", b
 const labelStyle: React.CSSProperties = { display: "block", fontSize: 15, fontWeight: 700, color: "#475569", marginBottom: 6 };
 
 function EditPlotModal({ plot, onClose, onSave, isMobile }: { plot: SavedPlot; onClose: () => void; onSave: (p: SavedPlot) => void; isMobile: boolean }) {
+  const form = plot.backendData?.form;
+  const isUserYear = !!form?.plantYear;
+  const isUserTrees = !!form?.treeCount;
+  const isUserVariety = !!form?.variety;
+  const isUserSpacing = !!form?.spacing;
+
   const [formData, setFormData] = useState({
     name: plot.name || "",
     ownerName: plot.ownerName || "",
     province: plot.province || "",
     areaRai: plot.areaRai?.toString() || "",
-    rubberAge: plot.rubberAge?.toString() || "",
-    trees: plot.trees?.toString() || "",
-    plantYearBE: plot.plantYearBE?.toString() || "",
-    variety: plot.variety || "",
-    spacing: plot.spacing || "",
+    rubberAge: isUserYear && plot.rubberAge ? plot.rubberAge.toString() : "",
+    trees: isUserTrees && plot.trees ? plot.trees.toString() : "",
+    plantYearBE: isUserYear && plot.plantYearBE ? plot.plantYearBE.toString() : "",
+    variety: isUserVariety && plot.variety ? plot.variety : "",
+    spacing: isUserSpacing && plot.spacing ? plot.spacing : "",
   });
 
   const handleSave = () => {
@@ -419,6 +425,15 @@ function EditPlotModal({ plot, onClose, onSave, isMobile }: { plot: SavedPlot; o
       yr5: carbonCo2(ageNum + 5, treesNum, sp),
       yr7: carbonCo2(ageNum + 7, treesNum, sp),
     };
+
+    const newForm = {
+      ...(plot.backendData?.form || {}),
+      plantYear: formData.plantYearBE ? formData.plantYearBE : undefined,
+      treeCount: formData.trees ? formData.trees : undefined,
+      variety: formData.variety ? formData.variety : undefined,
+      spacing: formData.spacing ? formData.spacing : undefined,
+    };
+
     onSave({
       ...plot,
       name: formData.name,
@@ -432,6 +447,10 @@ function EditPlotModal({ plot, onClose, onSave, isMobile }: { plot: SavedPlot; o
       spacing: formData.spacing,
       carbonTotal: newCarbon,
       forecast,
+      backendData: {
+        ...(plot.backendData || {}),
+        form: newForm
+      }
     });
   };
 
@@ -608,22 +627,22 @@ function PlotCard({ plot, index, onDelete, onEdit, expanded, onToggle, isMobile 
   let displayYearBE: number | null = null;
 
   if (yearParam) {
-      if (typeof yearParam.value === "number" && yearParam.value > 0) {
-          displayYearBE = yearParam.value + 543;
-          yearBoxItems = [{ label: `พ.ศ. ${displayYearBE}`, pct: 0, yearBE: displayYearBE as number }];
-      } else if (Array.isArray(yearParam.value) && yearParam.value.length > 0) {
-          const parsed = (yearParam.value as string[]).map(s => {
-              const yearMatch = s.match(/^(\d{4})/);
-              const pctMatch = s.match(/([\d.]+)%/);
-              const yearCE = yearMatch ? parseInt(yearMatch[1]) : null;
-              const yearBE = yearCE !== null ? yearCE + 543 : null;
-              const pct = pctMatch ? parseFloat(pctMatch[1]) : 0;
-              return { label: yearBE ? `พ.ศ. ${yearBE}` : s, pct, yearBE };
-          }).filter((x): x is { label: string; pct: number; yearBE: number } => x.yearBE !== null);
-          parsed.sort((a, b) => b.pct - a.pct);
-          yearBoxItems = parsed;
-          if (parsed.length > 0) displayYearBE = parsed[0].yearBE;
-      }
+    if (typeof yearParam.value === "number" && yearParam.value > 0) {
+      displayYearBE = yearParam.value + 543;
+      yearBoxItems = [{ label: `พ.ศ. ${displayYearBE}`, pct: 0, yearBE: displayYearBE as number }];
+    } else if (Array.isArray(yearParam.value) && yearParam.value.length > 0) {
+      const parsed = (yearParam.value as string[]).map(s => {
+        const yearMatch = s.match(/^(\d{4})/);
+        const pctMatch = s.match(/([\d.]+)%/);
+        const yearCE = yearMatch ? parseInt(yearMatch[1]) : null;
+        const yearBE = yearCE !== null ? yearCE + 543 : null;
+        const pct = pctMatch ? parseFloat(pctMatch[1]) : 0;
+        return { label: yearBE ? `พ.ศ. ${yearBE}` : s, pct, yearBE };
+      }).filter((x): x is { label: string; pct: number; yearBE: number } => x.yearBE !== null);
+      parsed.sort((a, b) => b.pct - a.pct);
+      yearBoxItems = parsed;
+      if (parsed.length > 0) displayYearBE = parsed[0].yearBE;
+    }
   }
   if (!displayYearBE && plot.plantYearBE && plot.plantYearBE > 0) displayYearBE = plot.plantYearBE;
 
@@ -634,18 +653,18 @@ function PlotCard({ plot, index, onDelete, onEdit, expanded, onToggle, isMobile 
   const displayVariety = isVarietyFromUser ? form.variety : (ep?.rubber_clone?.value ? String(ep.rubber_clone.value) : (plot.variety || ""));
   const displaySpacing = isSpacingFromUser ? form.spacing : (ep?.spacing_system?.value ? String(ep.spacing_system.value).replace(/\s*\([^)]*\)/, "").trim() : (plot.spacing || ""));
   const displayTreeCount = isTreeCountFromUser
-      ? (parseInt(form?.treeCount || "0") || 0)
-      : (ep?.tree_count?.value && typeof ep.tree_count.value === "number" ? ep.tree_count.value : (plot.trees || 0));
+    ? (parseInt(form?.treeCount || "0") || 0)
+    : (ep?.tree_count?.value && typeof ep.tree_count.value === "number" ? ep.tree_count.value : (plot.trees || 0));
 
   const convertYearNoteToBE = (note: string) => note.replace(/^(\d{4})/, (_, y) => String(parseInt(y) + 543));
 
   const infoItems = [
     { label: "พื้นที่", val: plot.areaRai > 0 ? plot.areaRai.toFixed(2) : "—", unit: "ไร่", icon: "bi-grid-3x3", color: "#0d9488", bg: "rgba(13,148,136,0.12)" },
     { label: "สถานะแปลง", val: plantStatusLabel, unit: "", icon: "bi-check2-circle", color: "#f59e0b", bg: "rgba(245,158,11,0.12)" },
-    { label: "ปีที่ปลูก", val: plot.plantYearBE && plot.plantYearBE > 0 ? String(plot.plantYearBE) : "—", unit: "พ.ศ.", icon: "bi-calendar2-check", color: "#3b82f6", bg: "rgba(59,130,246,0.12)" },
-    { label: "พันธุ์ยาง", val: plot.variety || "—", unit: "", icon: "bi-patch-check-fill", color: "#8b5cf6", bg: "rgba(139,92,246,0.12)" },
-    { label: "ระยะปลูก", val: plot.spacing || "—", unit: "ม.", icon: "bi-arrows-fullscreen", color: "#f59e0b", bg: "rgba(245,158,11,0.12)" },
-    { label: "จำนวนต้น", val: plot.trees && plot.trees > 0 ? plot.trees.toLocaleString("th-TH") : "—", unit: "ต้น", icon: "bi-tree-fill", color: "#10b981", bg: "rgba(16,185,129,0.12)" },
+    { label: "ปีที่ปลูก", val: form?.plantYear ? String(form.plantYear) : "—", unit: "พ.ศ.", icon: "bi-calendar2-check", color: "#3b82f6", bg: "rgba(59,130,246,0.12)" },
+    { label: "พันธุ์ยาง", val: isVarietyFromUser ? form.variety : "—", unit: "", icon: "bi-patch-check-fill", color: "#8b5cf6", bg: "rgba(139,92,246,0.12)" },
+    { label: "ระยะปลูก", val: isSpacingFromUser ? form.spacing : "—", unit: "ม.", icon: "bi-arrows-fullscreen", color: "#f59e0b", bg: "rgba(245,158,11,0.12)" },
+    { label: "จำนวนต้น", val: isTreeCountFromUser && form?.treeCount ? parseInt(form.treeCount).toLocaleString("th-TH") : "—", unit: "ต้น", icon: "bi-tree-fill", color: "#10b981", bg: "rgba(16,185,129,0.12)" },
   ];
 
   return (
@@ -718,7 +737,7 @@ function PlotCard({ plot, index, onDelete, onEdit, expanded, onToggle, isMobile 
             <>
               <Link
                 href={`/map-draw?project=${encodeURIComponent(plot.name)}&action=calc&plotId=${plot.id}`}
-                title="ประมวลผลคาร์บอน"
+                title="ไปหน้าประมวลผลคาร์บอน"
                 style={{ width: 34, height: 34, borderRadius: 9, background: "rgba(16,185,129,0.07)", color: "#10b981", border: "none", cursor: "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center", textDecoration: "none", transition: "background 0.15s" }}
                 onMouseEnter={e => { e.currentTarget.style.background = "rgba(16,185,129,0.14)"; }}
                 onMouseLeave={e => { e.currentTarget.style.background = "rgba(16,185,129,0.07)"; }}
@@ -825,85 +844,99 @@ function PlotCard({ plot, index, onDelete, onEdit, expanded, onToggle, isMobile 
               <div style={{ background: "#fff", borderRadius: 16, border: "1px solid #e2e8f0", padding: "20px", display: "flex", flexDirection: "column", gap: 16, boxShadow: "0 4px 12px rgba(0,0,0,0.02)", height: "100%" }}>
                 <div style={{ display: "flex", flexDirection: "column", gap: 8, fontSize: 13, color: "#475569" }}>
                   {userEnteredYear ? (
-                      // Case 1: User entered year
-                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 14px", background: "rgba(14,165,233,0.06)", borderRadius: 10, border: "1px solid rgba(14,165,233,0.18)" }}>
-                          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                              <span style={{ fontWeight: 700, color: "#0369a1", display: "flex", alignItems: "center", gap: 6 }}>
-                                  <i className="bi bi-person-check-fill" /> ปีที่ปลูก
-                              </span>
-                              <span style={{ fontSize: 11, color: "#0284c7", fontWeight: 600, background: "rgba(14,165,233,0.15)", padding: "2px 8px", borderRadius: 12, width: "fit-content" }}>
-                                  ระบุโดยผู้ใช้งาน
-                              </span>
-                          </div>
-                          <span style={{ color: "#0f172a", fontWeight: 800, fontSize: 16 }}>
-                              {displayYearBE ? `พ.ศ. ${displayYearBE}` : "—"}
-                          </span>
-                      </div>
+                    // Case 1: User entered year
+                    <div style={{ 
+                        display: "flex", flexWrap: "wrap", justifyContent: "space-between", alignItems: "center", gap: 12, 
+                        padding: "12px 14px", background: "rgba(14,165,233,0.06)", borderRadius: 10, border: "1px solid rgba(14,165,233,0.18)" 
+                    }}>
+                        <div style={{ display: "flex", flexDirection: "column", gap: 6, minWidth: 200, flex: 1 }}>
+                            <span style={{ fontWeight: 700, color: "#0369a1", display: "flex", alignItems: "center", gap: 6, fontSize: 14 }}>
+                                <i className="bi bi-person-check-fill" /> ปีที่ปลูก
+                            </span>
+                            <div style={{ 
+                                display: "flex", alignItems: "flex-start", gap: 6, 
+                                fontSize: 11, color: "#0284c7", fontWeight: 600, 
+                                background: "rgba(14,165,233,0.15)", padding: "6px 8px", 
+                                borderRadius: 6, width: "fit-content", lineHeight: 1.3 
+                            }}>
+                                <i className="bi bi-info-circle-fill" style={{ marginTop: 1, flexShrink: 0 }} />
+                                <span>ข้อมูลจากการระบุของผู้ใช้งาน (นำไปใช้ประมวลผล)</span>
+                            </div>
+                        </div>
+                        <div style={{ 
+                            color: "#0f172a", fontWeight: 800, fontSize: 16, 
+                            flexShrink: 0, marginLeft: "auto",
+                            background: "#fff", padding: "4px 10px", borderRadius: 8,
+                            border: "1px solid rgba(14,165,233,0.2)"
+                        }}>
+                            {displayYearBE ? `พ.ศ. ${displayYearBE}` : "—"}
+                        </div>
+                    </div>
                   ) : (
-                      // Case 2: Backend only
-                      yearBoxItems.length > 0 && (
-                          <div style={{ padding: "12px 14px", background: "rgba(16,185,129,0.04)", borderRadius: 10, border: "1px solid rgba(16,185,129,0.15)" }}>
-                              <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 12 }}>
-                                  <span style={{ fontWeight: 700, color: "#047857", display: "flex", alignItems: "center", gap: 6, fontSize: 14 }}>
-                                      <i className="bi bi-cpu-fill" /> ปีที่ตรวจพบ
-                                  </span>
-                                  <div style={{ 
-                                      display: "flex", alignItems: "center", gap: 6, 
-                                      fontSize: 12, color: "#059669", fontWeight: 600, 
-                                      background: "rgba(16,185,129,0.1)", padding: "6px 10px", 
-                                      borderRadius: 6, border: "1px dashed rgba(16,185,129,0.2)"
-                                  }}>
-                                      <i className="bi bi-info-circle-fill" />
-                                      ข้อมูลอ้างอิงจากระบบที่ใช้ในการประมวลผล
-                                  </div>
-                              </div>
-                              <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
-                                  {yearBoxItems.slice(0, 3).map((box, bi) => (
-                                      <div key={bi} style={{
-                                          padding: "4px 10px",
-                                          background: bi === 0 ? "rgba(16,185,129,0.12)" : "rgba(100,116,139,0.06)",
-                                          borderRadius: 8,
-                                          border: bi === 0 ? "1px solid rgba(16,185,129,0.3)" : "1px solid rgba(100,116,139,0.15)",
-                                          fontWeight: bi === 0 ? 700 : 500,
-                                          fontSize: 12,
-                                          color: bi === 0 ? "#047857" : "#475569",
-                                      }}>
-                                          {box.label}{box.pct > 0 ? ` (${box.pct}%)` : ""}
-                                      </div>
-                                  ))}
-                                  {yearBoxItems.length > 3 && (
-                                      <span style={{ fontSize: 14, color: "#94a3b8", fontWeight: 600 }}>...</span>
-                                  )}
-                              </div>
+                    // Case 2: Backend only
+                    yearBoxItems.length > 0 && (
+                      <div style={{ padding: "12px 14px", background: "rgba(16,185,129,0.04)", borderRadius: 10, border: "1px solid rgba(16,185,129,0.15)" }}>
+                        <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 12 }}>
+                          <span style={{ fontWeight: 700, color: "#047857", display: "flex", alignItems: "center", gap: 6, fontSize: 14 }}>
+                            <i className="bi bi-cpu-fill" /> ปีที่ตรวจพบ
+                          </span>
+                          <div style={{
+                                display: "flex", alignItems: "flex-start", gap: 6,
+                                fontSize: 11, color: "#059669", fontWeight: 600,
+                                background: "rgba(16,185,129,0.1)", padding: "6px 8px",
+                                borderRadius: 6, border: "1px dashed rgba(16,185,129,0.2)", width: "fit-content", lineHeight: 1.3
+                          }}>
+                                <i className="bi bi-info-circle-fill" style={{ marginTop: 1, flexShrink: 0 }} />
+                                <span>ข้อมูลอ้างอิงจากระบบที่ใช้ในการประมวลผล</span>
                           </div>
-                      )
+                        </div>
+                        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+                          {yearBoxItems.slice(0, 3).map((box, bi) => (
+                            <div key={bi} style={{
+                              padding: "4px 10px",
+                              background: "rgba(100,116,139,0.06)",
+                              borderRadius: 8,
+                              border: "1px solid rgba(100,116,139,0.15)",
+                              fontWeight: 500,
+                              fontSize: 12,
+                              color: "#475569",
+                            }}>
+                              {box.label}{box.pct > 0 ? ` (${box.pct}%)` : ""}
+                            </div>
+                          ))}
+                          {yearBoxItems.length > 3 && (
+                            <span style={{ fontSize: 14, color: "#94a3b8", fontWeight: 600 }}>...</span>
+                          )}
+                        </div>
+                      </div>
+                    )
                   )}
 
                   {/* Year distribution from note (both cases) */}
                   {yearNotes.length > 0 && (
-                      <div style={{ padding: "10px 14px", background: "rgba(100,116,139,0.04)", borderRadius: 10, border: "1px solid rgba(100,116,139,0.12)" }}>
-                          <div style={{ fontSize: 12, color: "#475569", fontWeight: 700, marginBottom: 6, display: "flex", alignItems: "center", gap: 6 }}>
-                              <i className="bi bi-pie-chart-fill" /> สัดส่วนปีที่ปลูกที่ตรวจพบในแปลง:
-                          </div>
-                          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                              {yearNotes.slice(0, 3).map((note, ni) => (
-                                  <span key={ni} style={{ fontSize: 12, color: ni === 0 ? "#0f172a" : "#64748b", fontWeight: ni === 0 ? 700 : 500, display: "flex", alignItems: "center", gap: 6 }}>
-                                      {ni === 0 ? <i className="bi bi-caret-right-fill" style={{ color: "#047857" }} /> : <span style={{ width: 12 }} />}
-                                      {convertYearNoteToBE(note)}
-                                  </span>
-                              ))}
-                              {yearNotes.length > 3 && (
-                                  <span style={{ fontSize: 12, color: "#94a3b8", paddingLeft: 18 }}>...</span>
-                              )}
-                          </div>
+                    <div style={{ padding: "10px 14px", background: "rgba(100,116,139,0.04)", borderRadius: 10, border: "1px solid rgba(100,116,139,0.12)" }}>
+                      <div style={{ fontSize: 12, color: "#475569", fontWeight: 700, marginBottom: 6, display: "flex", alignItems: "center", gap: 6 }}>
+                        <i className="bi bi-pie-chart-fill" /> สัดส่วนปีที่ปลูกที่ตรวจพบในแปลง:
                       </div>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                        {yearNotes.slice(0, 3).map((note, ni) => (
+                          <span key={ni} style={{ fontSize: 12, color: "#64748b", fontWeight: 500, display: "flex", alignItems: "center", gap: 6 }}>
+                            <i className="bi bi-caret-right-fill" style={{ color: "#94a3b8", fontSize: 10 }} />
+                            {convertYearNoteToBE(note)}
+                          </span>
+                        ))}
+                        {yearNotes.length > 3 && (
+                          <span style={{ fontSize: 12, color: "#94a3b8", paddingLeft: 18 }}>...</span>
+                        )}
+                      </div>
+                    </div>
                   )}
 
                   {/* Common params: variety, spacing, tree count */}
                   <div style={{ display: "flex", flexDirection: "column", gap: 3, marginTop: 2 }}>
-                      {displayVariety && <div>• พันธุ์ยาง: <strong style={{ color: "#0f172a" }}>{displayVariety}</strong> {!isVarietyFromUser && <span style={{ color: "#64748b", fontSize: 12 }}>(ค่าเริ่มต้น)</span>}</div>}
-                      {displaySpacing && <div>• ระยะปลูก: <strong style={{ color: "#0f172a" }}>{displaySpacing}</strong> {!isSpacingFromUser && <span style={{ color: "#64748b", fontSize: 12 }}>(ค่าเริ่มต้น)</span>}</div>}
-                      {displayTreeCount > 0 && <div>• จำนวนต้น: <strong style={{ color: "#0f172a" }}>{displayTreeCount.toLocaleString("th-TH")}</strong> ต้น {!isTreeCountFromUser && <span style={{ color: "#64748b", fontSize: 12 }}>(ประเมินโดยระบบ)</span>}</div>}
+                    {displayVariety && <div>• พันธุ์ยาง: <strong style={{ color: "#0f172a" }}>{displayVariety}</strong> {!isVarietyFromUser && <span style={{ color: "#64748b", fontSize: 12 }}>(ค่าเริ่มต้น)</span>}</div>}
+                    {displaySpacing && <div>• ระยะปลูก: <strong style={{ color: "#0f172a" }}>{displaySpacing}</strong> {!isSpacingFromUser && <span style={{ color: "#64748b", fontSize: 12 }}>(ค่าเริ่มต้น)</span>}</div>}
+                    {displayTreeCount > 0 && <div>• จำนวนต้น: <strong style={{ color: "#0f172a" }}>{displayTreeCount.toLocaleString("th-TH")}</strong> ต้น {!isTreeCountFromUser && <span style={{ color: "#64748b", fontSize: 12 }}>(ประเมินโดยระบบ)</span>}</div>}
                   </div>
                 </div>
               </div>
@@ -1345,8 +1378,8 @@ export default function MyPlotsPage() {
                       </div>
                     </div>
                     <div style={{ display: "flex", flexWrap: "wrap", gap: 10, width: isMobile ? "100%" : "auto" }}>
-                      <Link href={`/map-draw?project=${encodeURIComponent(group.projectName)}&action=calc`} style={{ flex: isMobile ? "1 1 100%" : "auto", textAlign: "center", padding: "8px 16px", borderRadius: 12, background: "linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%)", color: "#fff", fontWeight: 700, fontSize: 15, textDecoration: "none", border: "none", display: "flex", alignItems: "center", justifyContent: "center", gap: 6, boxShadow: "0 4px 15px rgba(14,165,233,0.3)" }}>
-                        <i className="bi bi-magic" /> ประมวลผลคาร์บอน
+                      <Link href={`/map-draw?project=${encodeURIComponent(group.projectName)}&action=calc`} style={{ flex: isMobile ? "1 1 100%" : "auto", textAlign: "center", padding: isMobile ? "10px 16px" : "8px 16px", borderRadius: 12, background: "linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%)", color: "#fff", fontWeight: 700, fontSize: isMobile ? 15 : 14, textDecoration: "none", border: "none", display: "flex", alignItems: "center", justifyContent: "center", gap: 6, boxShadow: "0 4px 15px rgba(14,165,233,0.3)", whiteSpace: "nowrap" }}>
+                        <i className="bi bi-magic" /> ไปหน้าประมวลผลคาร์บอน
                       </Link>
                       <Link href={`/map-draw?project=${encodeURIComponent(group.projectName)}`} style={{ flex: isMobile ? 1 : "auto", textAlign: "center", padding: "8px 16px", borderRadius: 12, background: "rgba(16,185,129,0.1)", color: "#059669", fontWeight: 700, fontSize: 15, textDecoration: "none", border: "1px solid rgba(16,185,129,0.2)", display: "flex", alignItems: "center", justifyContent: "center", gap: 5 }}>
                         <i className="bi bi-plus-lg" /> เพิ่มแปลง

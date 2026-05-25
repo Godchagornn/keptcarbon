@@ -376,7 +376,7 @@ function PlotDetailCard({
                             <i className="bi bi-person-check-fill" /> ปีที่ปลูก
                         </span>
                         <span style={{ fontSize: 11, color: "#0284c7", fontWeight: 600, background: "rgba(14,165,233,0.15)", padding: "2px 8px", borderRadius: 12, width: "fit-content" }}>
-                            ระบุโดยผู้ใช้งาน
+                            ระบุโดยผู้ใช้งาน (นำไปใช้ประมวลผล)
                         </span>
                     </div>
                     <span style={{ color: "#0f172a", fontWeight: 800, fontSize: 16 }}>
@@ -392,13 +392,13 @@ function PlotDetailCard({
                                 <i className="bi bi-cpu-fill" /> ปีที่ตรวจพบ
                             </span>
                             <div style={{
-                                display: "flex", alignItems: "center", gap: 6,
-                                fontSize: 12, color: "#059669", fontWeight: 600,
-                                background: "rgba(16,185,129,0.1)", padding: "6px 10px",
-                                borderRadius: 6, border: "1px dashed rgba(16,185,129,0.2)"
+                                display: "flex", alignItems: "flex-start", gap: 6,
+                                fontSize: 11, color: "#059669", fontWeight: 600,
+                                background: "rgba(16,185,129,0.1)", padding: "4px 8px",
+                                borderRadius: 6, border: "1px dashed rgba(16,185,129,0.2)", width: "fit-content", lineHeight: 1.4
                             }}>
-                                <i className="bi bi-info-circle-fill" />
-                                ข้อมูลอ้างอิงจากระบบที่ใช้ในการประมวลผล
+                                <i className="bi bi-info-circle-fill" style={{ marginTop: 2, flexShrink: 0 }} />
+                                <span>ข้อมูลอ้างอิงจากระบบที่ใช้ในการประมวลผล</span>
                             </div>
                         </div>
                         <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
