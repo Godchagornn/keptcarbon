@@ -1,6 +1,5 @@
 from pydantic import BaseModel, Field
-from typing import List, Optional, Dict, Any, Union
-
+from typing import List, Optional, Dict, Union, Any
 
 # ── Shared sub-models ─────────────────────────────────────────────────────────
 
@@ -15,14 +14,40 @@ class CarbonValueEstimate(BaseModel):
     ci: float
     ci_lower: float
     ci_upper: float
+class ParamWithSource(BaseModel):
+    # Can accept a single value (2010) or multiple values ([2010, 2015, 2018])
+    value: Optional[Union[Any, List[Any]]] = None
+    note: Optional[Union[Any, List[Any]]] = Field(None, description="Percentage of the values (year or tree count) or defult")
+    source: Optional[str] = Field(None, description="Origin tracking: 'user input' or 'calculated'")
+
+
+class EstimationParameters(BaseModel):
+    year_of_planting: ParamWithSource = Field(default_factory=ParamWithSource)
+    rubber_clone: ParamWithSource = Field(default_factory=ParamWithSource)
+    tree_count: ParamWithSource = Field(default_factory=ParamWithSource)
+    spacing_system: ParamWithSource = Field(default_factory=ParamWithSource)
+
+
+class CarbonMetric(BaseModel):
+    """A standardized component tracking an estimate along with its 95% Confidence Interval."""
+    estimate: float = Field(..., alias="value")  # 'alias' lets frontend see 'value'
+    ci_margin: float = Field(..., alias="ci")
+    ci_lower: float = Field(..., alias="ci_lower")
+    ci_upper: float = Field(..., alias="ci_upper")
+
+    class Config:
+        populate_by_name = True  # Allows you to use either 'estimate' or 'value' in your Python code
 
 
 class YearlyEstimate(BaseModel):
     year: int
     year_at: int
     age: Optional[int] = None
-    stocks: CarbonValueEstimate
-    gain: CarbonValueEstimate
+    
+
+    # Nested components
+    stocks: CarbonMetric = Field(..., description="Absolute carbon stock metrics for the given year")
+    gain: CarbonMetric = Field(..., description="Cumulative carbon gain metrics relative to the baseline year")
 
 
 class LUPolygon(BaseModel):
@@ -71,8 +96,9 @@ class PlantationEstimateRequest(BasePlantationRequest):
     tree_count: Optional[int] = Field(None, description="User-defined count. If None, calculate using area and spacing.")
     spacing_system: Optional[str] = Field(None, description="Standard spacing, e.g. '2.5x8' = 500 trees/ha")
     selected_lu_classes: List[str] = Field(
-        default=["A302"],
-        description="List of LU codes the user wants included in carbon calculations"
+        #default=["A302"], 
+        ...,
+        description="List of LU codes, which identify areas the user wants included in carbon calculations"
     )
 
 
@@ -80,7 +106,7 @@ class PlantationEstimationResponse(BaseModel):
     polygon_id: str
     status: StatusMessage
     carbon_profile: Optional[List[YearlyEstimate]] = None
-    estimated_parameters: Optional[EstimatedParameters] = None
+    estimated_parameters: Optional[EstimationParameters] = None
 
 
 # ── Plantation-info endpoint (/api/v1/plantation-info) ────────────────────
@@ -97,3 +123,7 @@ class PlantationInfoResponse(BaseModel):
     area_m2: Optional[float] = Field(None, description="Total area in square meters")
     status: StatusMessage
     lu_polygon: Optional[List[LUPolygon]] = None
+
+
+
+
