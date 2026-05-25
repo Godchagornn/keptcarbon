@@ -14,7 +14,6 @@ const getCycleColor = (cycle: number) =>
   GREEN_THEME_COLORS[Math.min(Math.max(0, cycle), GREEN_THEME_COLORS.length - 1)];
 
 export const TOTAL_PROJ_YEARS = 35;
-const MAX_AGE_DISPLAY = 28; // แสดงกราฟถึงอายุ 28 ปี
 
 export function carbonCo2(age: number, trees: number, spacing: string): number {
   const spacingMap: Record<string, number> = {
@@ -97,9 +96,9 @@ export function CarbonBarChart({
   const [hoverIdx, setHoverIdx] = useState<number | null>(null);
   if (!pts.length) return null;
 
-  // showAge = true → กรอกปีปลูกมา → filter ให้แสดงถึง MAX_AGE_DISPLAY ปี
-  // showAge = false → ไม่ได้กรอกปี → แสดงข้อมูลทั้งหมดที่ backend ส่งมา
-  const displayPts = showAge ? pts.filter(p => p.age <= MAX_AGE_DISPLAY) : pts;
+  // showAge = true (กรอกปีมา) → แสดงถึงอายุ 28 ปี
+  // showAge = false (age=null จาก backend) → แสดงทั้งหมดที่มี
+  const displayPts = showAge ? pts.filter(p => p.age <= 28) : pts;
   if (!displayPts.length) return null;
 
   const W = isMobile ? 560 : (narrowMode ? 760 : 1120);
@@ -262,7 +261,7 @@ export function CarbonBarChart({
               {/* อายุ (แทนที่ปีที่เดิม) */}
               {showAge && (
                 <text x={x} y={PT + iH + (isMobile ? 30 : 40)} textAnchor="middle" fontSize={isMobile ? 15 : 18} fill="#475569" fontWeight={700}>
-                  {p.year_at}
+                  {p.age}
                 </text>
               )}
               {/* พ.ศ. */}
@@ -291,8 +290,8 @@ export function CarbonBarChart({
           const x = startX + hoverIdx * (barW + gap) + barW / 2;
           const y = PT + iH - bh;
 
-          const ttW = isMobile ? 220 : 260;
-          const ttH = isMobile ? 210 : 236;
+          const ttW = isMobile ? 240 : 280;
+          const ttH = isMobile ? 230 : 260;
           const ttX = Math.min(Math.max(x - ttW / 2, 4), W - ttW - 4);
           const ttY = Math.max(y - ttH - 14, 4);
 
@@ -326,14 +325,14 @@ export function CarbonBarChart({
 
                   {/* CO2 สะสม */}
                   <div style={{ textAlign: "center" }}>
-                    <div style={{ color: "#fff", fontSize: isMobile ? 11 : 13, fontWeight: 600, marginBottom: 3, opacity: 0.85 }}>
+                    <div style={{ color: "#fff", fontSize: isMobile ? 14 : 16, fontWeight: 600, marginBottom: 3, opacity: 0.85 }}>
                       กักเก็บคาร์บอน
                     </div>
                     <div style={{ display: "flex", alignItems: "baseline", justifyContent: "center", gap: 6 }}>
                       <span style={{ fontSize: isMobile ? 26 : 32, fontWeight: 800, color: "#fff", lineHeight: 1 }}>
                         {co2Val.toLocaleString("th-TH")}
                       </span>
-                      <span style={{ fontSize: isMobile ? 15 : 18, color: "rgba(255,255,255,0.65)", fontWeight: 500 }}>
+                      <span style={{ fontSize: isMobile ? 18 : 22, color: "rgba(255,255,255,0.65)", fontWeight: 500 }}>
                         ±{co2Ci}
                       </span>
                     </div>
@@ -344,18 +343,18 @@ export function CarbonBarChart({
 
                   {/* Annual gain */}
                   <div style={{ textAlign: "center" }}>
-                    <div style={{ color: "rgba(56,189,248,0.9)", fontSize: isMobile ? 11 : 13, fontWeight: 600, marginBottom: 3 }}>
+                    <div style={{ color: "rgba(56,189,248,0.9)", fontSize: isMobile ? 14 : 16, fontWeight: 600, marginBottom: 3 }}>
                       คาร์บอนเครดิต
                     </div>
                     <div style={{ display: "flex", alignItems: "baseline", justifyContent: "center", gap: 6 }}>
                       <span style={{ fontSize: isMobile ? 28 : 34, fontWeight: 800, color: "#38bdf8", lineHeight: 1 }}>
                         {parseFloat(gainVal).toLocaleString("th-TH", { minimumFractionDigits: 1, maximumFractionDigits: 1 })}
                       </span>
-                      <span style={{ fontSize: isMobile ? 15 : 18, color: "rgba(56,189,248,0.65)", fontWeight: 500 }}>
+                      <span style={{ fontSize: isMobile ? 18 : 22, color: "rgba(56,189,248,0.65)", fontWeight: 500 }}>
                         ±{gainCiVal}
                       </span>
                     </div>
-                    <div style={{ color: "rgba(186,230,253,0.75)", fontSize: isMobile ? 12 : 13, fontWeight: 500, marginTop: 4 }}>
+                    <div style={{ color: "rgba(186,230,253,0.75)", fontSize: isMobile ? 15 : 17, fontWeight: 500, marginTop: 4 }}>
                       tCO₂eq
                     </div>
                   </div>
