@@ -869,12 +869,12 @@ function PlotCard({ plot, index, onDelete, onEdit, expanded, onToggle, isMobile 
             <>
               <Link
                 href={`/map-draw?project=${encodeURIComponent(plot.name)}&action=calc&plotId=${plot.id}`}
-                title="ไปหน้าประมวลผลคาร์บอน"
+                title="แก้ไขขอบเขตแปลง"
                 style={{ width: 34, height: 34, borderRadius: 9, background: "rgba(16,185,129,0.07)", color: "#10b981", border: "none", cursor: "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center", textDecoration: "none", transition: "background 0.15s" }}
                 onMouseEnter={e => { e.currentTarget.style.background = "rgba(16,185,129,0.14)"; }}
                 onMouseLeave={e => { e.currentTarget.style.background = "rgba(16,185,129,0.07)"; }}
               >
-                <i className="bi bi-magic" style={{ fontSize: 14 }} />
+                <i className="bi bi-pin-map" style={{ fontSize: 14 }} />
               </Link>
               <button
                 onClick={() => onEdit?.(plot, index)}
