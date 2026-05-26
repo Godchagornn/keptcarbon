@@ -473,19 +473,41 @@ function PlotDetailCard({
 
             {/* Year distribution from note (both cases) */}
             {yearNotes.length > 0 && (
-                <div style={{ padding: "10px 14px", background: "rgba(100,116,139,0.04)", borderRadius: 10, border: "1px solid rgba(100,116,139,0.12)", marginTop: 4 }}>
-                    <div style={{ fontSize: 12, color: "#475569", fontWeight: 700, marginBottom: 6, display: "flex", alignItems: "center", gap: 6 }}>
-                        <i className="bi bi-pie-chart-fill" /> สัดส่วนปีที่ปลูกที่ตรวจพบในแปลง:
+                <div style={{ padding: "12px 14px", background: "rgba(16,185,129,0.04)", borderRadius: 10, border: "1px solid rgba(16,185,129,0.15)", marginTop: 4 }}>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 12 }}>
+                        <span style={{ fontWeight: 700, color: "#047857", display: "flex", alignItems: "center", gap: 6, fontSize: 14 }}>
+                            <i className="bi bi-cpu-fill" /> ข้อมูลที่ใช้ในการประมวลผล
+                        </span>
+                        <div style={{
+                            display: "flex", alignItems: "flex-start", gap: 6,
+                            fontSize: 11, color: "#059669", fontWeight: 600,
+                            background: "rgba(16,185,129,0.1)", padding: "6px 8px",
+                            borderRadius: 6, border: "1px dashed rgba(16,185,129,0.2)", width: "fit-content", lineHeight: 1.3
+                        }}>
+                            <i className="bi bi-info-circle-fill" style={{ marginTop: 1, flexShrink: 0 }} />
+                            <span>ข้อมูลอ้างอิงจากระบบที่ใช้ในการประมวลผล</span>
+                        </div>
                     </div>
-                    <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                        {yearNotes.slice(0, 3).map((note, ni) => (
-                            <span key={ni} style={{ fontSize: 12, color: "#64748b", fontWeight: 500, display: "flex", alignItems: "center", gap: 6 }}>
-                                <i className="bi bi-caret-right-fill" style={{ color: "#94a3b8", fontSize: 10 }} />
-                                {convertYearNoteToBE(note)}
-                            </span>
-                        ))}
+                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+                        {yearNotes.slice(0, 3).map((note, ni) => {
+                            const beNote = convertYearNoteToBE(note);
+                            const displayNote = /^\d{4}/.test(beNote) ? `พ.ศ. ${beNote}` : beNote;
+                            return (
+                                <div key={ni} style={{
+                                    padding: "4px 10px",
+                                    background: "rgba(100,116,139,0.06)",
+                                    borderRadius: 8,
+                                    border: "1px solid rgba(100,116,139,0.15)",
+                                    fontWeight: 500,
+                                    fontSize: 12,
+                                    color: "#475569",
+                                }}>
+                                    {displayNote}
+                                </div>
+                            );
+                        })}
                         {yearNotes.length > 3 && (
-                            <span style={{ fontSize: 12, color: "#94a3b8", paddingLeft: 18 }}>...</span>
+                            <span style={{ fontSize: 12, color: "#64748b", fontWeight: 700 }}>...</span>
                         )}
                     </div>
                 </div>
