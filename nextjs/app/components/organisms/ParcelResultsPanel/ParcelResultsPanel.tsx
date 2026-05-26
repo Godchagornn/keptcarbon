@@ -1889,7 +1889,7 @@ export function ParcelResultsPanel({
                     </div>
                     <div style={{ flex: 1 }}>
                         <div style={{ fontSize: isMobile ? 15 : 16, fontWeight: 800, color: "#0f172a", lineHeight: 1.2 }}>
-                            ผลการประมวลผลคาร์บอน
+                            ผลการประเมินผลคาร์บอนเครดิต
                         </div>
                         <div style={{ fontSize: 11, color: "#64748b", marginTop: 2, fontWeight: 500 }}>
                             แสดงผลรวมและรายแปลง

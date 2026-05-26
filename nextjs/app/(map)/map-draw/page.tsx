@@ -1361,7 +1361,17 @@ function MapDrawContent() {
       const bounds = new maplibregl.LngLatBounds();
       ring.forEach(c => bounds.extend(c as [number, number]));
       if (!bounds.isEmpty()) {
-        map.fitBounds(bounds, { padding: { top: 60, bottom: 60, left: 60, right: 400 }, duration: 700, maxZoom: 17 });
+        const isMob = typeof window !== "undefined" && window.innerWidth < 768;
+        const pad = isMob 
+            ? { top: 60, bottom: 350, left: 60, right: 60 } 
+            : { top: 60, bottom: 60, left: 60, right: 380 };
+            
+        try {
+            map.fitBounds(bounds, { padding: pad, duration: 700, maxZoom: 17 });
+        } catch (e) {
+            // fallback if padding exceeds container dimensions
+            map.fitBounds(bounds, { padding: 40, duration: 700, maxZoom: 17 });
+        }
       }
     }
 
