@@ -83,7 +83,7 @@ export function buildBarPoints(
 export function CarbonBarChart({
   pts,
   isMobile,
-  title = "ปริมาณการกักเก็บคาร์บอนสะสม (tCO₂eq)",
+  title = "ปริมาณคาร์บอนกักเก็บ(tCO₂eq)",
   narrowMode = false,
   showAge = true,
 }: {
