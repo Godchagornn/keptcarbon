@@ -83,7 +83,7 @@ export function buildBarPoints(
 export function CarbonBarChart({
   pts,
   isMobile,
-  title = "ปริมาณการกักเก็บคาร์บอนสะสม (tCO₂)",
+  title = "ปริมาณการกักเก็บคาร์บอนสะสม (tCO₂eq)",
   narrowMode = false,
   showAge = true,
 }: {
@@ -155,8 +155,8 @@ export function CarbonBarChart({
       justifyContent: "center"
     }}>
       {title && (
-        <div style={{ textAlign: "center", fontSize: isMobile ? 16 : (narrowMode ? 22 : 26), fontWeight: 800, color: "#064e3b", marginBottom: 12 }}>
-          {title}
+        <div style={{ textAlign: "center", fontSize: isMobile ? 13 : (narrowMode ? 14 : 16), fontWeight: 700, color: "#0f766e", marginBottom: 12 }}>
+          {title === "ปริมาณการกักเก็บคาร์บอนสะสม (tCO₂)" ? "ปริมาณการกักเก็บคาร์บอนสะสม (tCO₂eq)" : title}
         </div>
       )}
 
@@ -326,7 +326,7 @@ export function CarbonBarChart({
                   {/* CO2 สะสม */}
                   <div style={{ textAlign: "center" }}>
                     <div style={{ color: "#fff", fontSize: isMobile ? 18 : 22, fontWeight: 600, marginBottom: 4, opacity: 0.85 }}>
-                      กักเก็บคาร์บอน
+                      คาร์บอนกักเก็บ
                     </div>
                     <div style={{ display: "flex", alignItems: "baseline", justifyContent: "center", gap: 6 }}>
                       <span style={{ fontSize: isMobile ? 28 : 36, fontWeight: 800, color: "#fff", lineHeight: 1 }}>

@@ -1897,84 +1897,7 @@ export function ParcelResultsPanel({
                     </div>
                 </div>
 
-                {/* ── Action Buttons ────────────────────────────── */}
-                <div style={{ display: "flex", gap: 8, width: "100%", marginBottom: 16, alignItems: "center" }}>
-                    <button
-                        className="prp-btn-ghost"
-                        onClick={() => onStepChange(2)}
-                        style={{
-                            flex: 1, height: "42px", padding: 0, margin: 0,
-                            boxSizing: "border-box", fontSize: "12.5px", fontWeight: 700,
-                            color: "#047857", cursor: "pointer",
-                            background: "rgba(16,185,129,0.08)",
-                            border: "1.5px solid rgba(16,185,129,0.25)",
-                            borderRadius: "14px",
-                            display: "flex", alignItems: "center", justifyContent: "center", gap: "4px",
-                            transition: "all 0.2s", outline: "none",
-                            boxShadow: "0 2px 5px rgba(16,185,129,0.05)"
-                        }}
-                        onMouseOver={(e) => { e.currentTarget.style.background = "rgba(16,185,129,0.16)"; e.currentTarget.style.borderColor = "rgba(16,185,129,0.45)"; }}
-                        onMouseOut={(e) => { e.currentTarget.style.background = "rgba(16,185,129,0.08)"; e.currentTarget.style.borderColor = "rgba(16,185,129,0.25)"; }}
-                    >
-                        <i className="bi bi-arrow-left-short" style={{ fontSize: "16px" }} />
-                        <span style={{ whiteSpace: "nowrap" }}>ย้อนกลับ</span>
-                    </button>
-                    <button
-                        className="prp-btn-primary"
-                        onClick={() => handleSave()}
-                        disabled={!user || !projectName.trim() || isDuplicateProjectName || saveState === "saving"}
-                        style={{
-                            flex: isMobile ? 1.5 : 1.2, minHeight: "42px", height: "auto",
-                            padding: "6px 4px", margin: 0, boxSizing: "border-box",
-                            fontSize: "12.5px", fontWeight: 700,
-                            background: !user ? "#cbd5e1" : "linear-gradient(135deg,#0369a1,#0284c7)",
-                            border: "1.5px solid transparent", borderRadius: "14px",
-                            display: "flex", alignItems: "center", justifyContent: "center", gap: "6px",
-                            cursor: !user || !projectName.trim() || isDuplicateProjectName || saveState === "saving" ? "not-allowed" : "pointer",
-                            opacity: !user ? 0.5 : (!projectName.trim() || isDuplicateProjectName || saveState === "saving" ? 0.6 : 1),
-                            color: "#fff", transition: "all 0.2s",
-                            boxShadow: !user ? "none" : "0 4px 10px rgba(2,132,199,0.2)"
-                        }}
-                    >
-                        {saveState === "saving" ? (
-                            <><span className="s1-spin" style={{ width: 14, height: 14, border: "2px solid rgba(255,255,255,0.3)", borderTopColor: "#fff" }} /> <span style={{ whiteSpace: "nowrap" }}>บันทึก...</span></>
-                        ) : saveState === "done" ? (
-                            <><i className="bi bi-check-circle-fill" /> <span style={{ whiteSpace: "nowrap" }}>บันทึกแล้ว</span></>
-                        ) : (
-                            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                                <i className="bi bi-save" style={{ fontSize: isMobile ? 16 : 14 }} />
-                                {isMobile ? (
-                                    <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", lineHeight: 1.15, textAlign: "left", fontSize: 11 }}>
-                                        <span>บันทึกข้อมูล</span><span>ประมวลผล</span>
-                                    </div>
-                                ) : (
-                                    <span style={{ whiteSpace: "nowrap" }}>บันทึกข้อมูลประมวลผล</span>
-                                )}
-                            </div>
-                        )}
-                    </button>
-                    {onBack && (
-                        <button
-                            className="prp-btn-ghost"
-                            onClick={onBack}
-                            style={{
-                                flex: 1, height: "42px", padding: 0, margin: 0,
-                                boxSizing: "border-box", fontSize: "12.5px", fontWeight: 700,
-                                color: "#64748b", cursor: "pointer",
-                                background: "rgba(100,116,139,0.07)",
-                                border: "1.5px solid rgba(100,116,139,0.22)",
-                                borderRadius: "14px",
-                                display: "flex", alignItems: "center", justifyContent: "center", gap: "4px",
-                                transition: "all 0.2s", outline: "none", boxShadow: "none"
-                            }}
-                            onMouseOver={(e) => { e.currentTarget.style.background = "rgba(100,116,139,0.14)"; e.currentTarget.style.borderColor = "rgba(100,116,139,0.4)"; }}
-                            onMouseOut={(e) => { e.currentTarget.style.background = "rgba(100,116,139,0.07)"; e.currentTarget.style.borderColor = "rgba(100,116,139,0.22)"; }}
-                        >
-                            <i className="bi bi-house-door" style={{ fontSize: "13px" }} />
-                            <span style={{ whiteSpace: "nowrap" }}>ขั้นตอนที่ 1</span>
-                        </button>
-                    )}
-                </div>
+
 
                 {/* ── Total Overview Accordion ────────────────────────────── */}
                 <div style={{
@@ -2009,7 +1932,7 @@ export function ParcelResultsPanel({
                             <i className="bi bi-pie-chart-fill" />
                         </div>
                         <div style={{ flex: 1 }}>
-                            <div style={{ fontWeight: 700, fontSize: 14, color: "#0f172a" }}>ผลรวมโครงการ</div>
+                            <div style={{ fontWeight: 700, fontSize: 14, color: "#0f172a" }}>{projectName || "โครงการ"}</div>
                             <div style={{ fontSize: 12, color: "#64748b" }}>
                                 {carbonResults.length} แปลง · {totalArea.toFixed(2)} ไร่
                             </div>
@@ -2021,29 +1944,13 @@ export function ParcelResultsPanel({
                         <div style={{ padding: "14px 14px 16px" }}>
                             <div style={{
                                 background: "linear-gradient(135deg,#f0fdf4,#ecfdf5)",
-                                borderRadius: 12, padding: "12px 16px", marginBottom: 16,
+                                borderRadius: 12, padding: "16px", marginBottom: 16,
                                 border: "1px solid rgba(16,185,129,0.18)",
-                                display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px 12px"
+                                display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center"
                             }}>
-                                <div>
-                                    <div style={{ fontSize: 11, color: "#64748b", fontWeight: 600 }}>ชื่อโครงการ</div>
-                                    <div style={{ fontWeight: 700, color: "#0f172a", fontSize: 14 }}>{projectName || "—"}</div>
-                                </div>
-                                <div>
-                                    <div style={{ fontSize: 11, color: "#64748b", fontWeight: 600 }}>จำนวนแปลง</div>
-                                    <div style={{ fontWeight: 700, color: "#0f172a", fontSize: 14 }}>{carbonResults.length} แปลง</div>
-                                </div>
-                                <div>
-                                    <div style={{ fontSize: 11, color: "#64748b", fontWeight: 600 }}>พื้นที่รวม</div>
-                                    <div style={{ fontWeight: 800, color: "#0284c7", fontSize: isMobile ? 16 : 18 }}>
-                                        {totalArea.toFixed(2)} <span style={{ fontSize: 12, fontWeight: 600 }}>ไร่</span>
-                                    </div>
-                                </div>
-                                <div>
-                                    <div style={{ fontSize: 11, color: "#64748b", fontWeight: 600 }}>คาร์บอนรวมปัจจุบัน</div>
-                                    <div style={{ fontWeight: 800, color: "#0d9488", fontSize: isMobile ? 16 : 18 }}>
-                                        {Math.floor(summaryTotalCo2).toLocaleString()} <span style={{ fontSize: 12, fontWeight: 600 }}>tCO₂</span>
-                                    </div>
+                                <div style={{ fontSize: 13, color: "#0f766e", fontWeight: 700, marginBottom: 4 }}>คาร์บอนรวม</div>
+                                <div style={{ fontWeight: 800, color: "#0d9488", fontSize: isMobile ? 24 : 28 }}>
+                                    {Math.floor(summaryTotalCo2).toLocaleString()} <span style={{ fontSize: 16, fontWeight: 600, opacity: 0.8 }}>tCO₂eq</span>
                                 </div>
                             </div>
 
@@ -2143,7 +2050,7 @@ export function ParcelResultsPanel({
                                                     <i className="bi bi-cloud-arrow-down-fill" /> คาร์บอนสะสมปัจจุบัน
                                                 </div>
                                                 <div style={{ fontWeight: 800, color: "#0d9488", fontSize: isMobile ? 24 : 28, lineHeight: 1.1 }}>
-                                                    {Math.floor(cr.co2Now).toLocaleString()} <span style={{ fontSize: 16, fontWeight: 600, opacity: 0.8 }}>tCO₂</span>
+                                                    {Math.floor(cr.co2Now).toLocaleString()} <span style={{ fontSize: 16, fontWeight: 600, opacity: 0.8 }}>tCO₂eq</span>
                                                 </div>
                                             </div>
                                         </div>
