@@ -385,14 +385,20 @@ function MapDrawContent() {
     const onVertsMove = (e: maplibregl.MapMouseEvent) => {
       if (activePIdx === -1) return;
       const parcels = [...drawnParcelsRef.current];
-      const parcel = parcels[activePIdx];
-      if (parcel && parcel.geometry.type === "Polygon") {
-        const coords = [...parcel.geometry.coordinates[0]];
+      const originalParcel = parcels[activePIdx];
+      if (originalParcel && originalParcel.geometry.type === "Polygon") {
+        const parcel = { ...originalParcel };
+        const geom = parcel.geometry as GeoJSON.Polygon;
+        const coords = [...geom.coordinates[0]];
         coords[activeVIdx] = [e.lngLat.lng, e.lngLat.lat];
         if (activeVIdx === 0) {
           coords[coords.length - 1] = [e.lngLat.lng, e.lngLat.lat];
         }
-        parcel.geometry.coordinates[0] = coords;
+        parcel.geometry = { ...geom, type: "Polygon", coordinates: [coords] };
+        parcel.properties = { ...parcel.properties };
+        parcel.properties.rai = polygonAreaM2(coords as LngLat[]) / 1600;
+        
+        parcels[activePIdx] = parcel;
 
         const srcPlot = map.getSource("plot") as maplibregl.GeoJSONSource | undefined;
         if (srcPlot) {
@@ -403,6 +409,8 @@ function MapDrawContent() {
         if (srcVerts) {
           srcVerts.setData({ type: "FeatureCollection", features: getVertFeatures(parcels) });
         }
+
+        setDrawnParcels(parcels);
       }
     };
 

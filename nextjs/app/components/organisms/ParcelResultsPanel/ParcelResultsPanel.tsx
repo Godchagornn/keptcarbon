@@ -1214,7 +1214,7 @@ export function ParcelResultsPanel({
                             <i className="bi bi-pencil-square me-2" style={{ color: "#10b981" }} />
                             {projectName?.trim() ? `โครงการ ${projectName}` : "กรอกข้อมูลแปลง"}
                         </div>
-                        <div className="prp-subtitle">กรอกหรือข้ามได้ — ข้อมูลจะนำไปประมวลผลคาร์บอน</div>
+                        <div className="prp-subtitle">เพื่อนำไปประเมินคาร์บอนเครดิต</div>
                     </div>
                 </div>
 
@@ -1386,7 +1386,7 @@ export function ParcelResultsPanel({
                 {/* Summary of drawn parcels */}
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12, padding: "0 4px" }}>
                     <div style={{ fontSize: 15, fontWeight: 700, color: "#475569" }}>
-                        แปลงที่วาดแล้ว ({plots.length})
+                        แปลงที่วาดแล้ว
                     </div>
                     <div style={{ fontSize: 16, fontWeight: 800, color: "#10b981" }}>
                         {totalArea.toFixed(2)} ไร่
@@ -1757,15 +1757,15 @@ export function ParcelResultsPanel({
                                     <i className="bi bi-trash3-fill" style={{ color: "#ef4444", fontSize: 17 }} />
                                 </div>
                                 <div>
-                                    <div style={{ fontSize: 15, fontWeight: 800, color: "#0f172a" }}>ลบแปลงที่ {deleteConfirmIdx + 1}</div>
+                                    <div style={{ fontSize: 15, fontWeight: 800, color: "#0f172a" }}>แปลงที่ {deleteConfirmIdx + 1}</div>
                                     <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 1 }}>
                                         {plots[deleteConfirmIdx]?.areaRai ? `${plots[deleteConfirmIdx].areaRai.toFixed(2)} ไร่` : ""}
                                     </div>
                                 </div>
                             </div>
                             <div style={{ fontSize: 13, color: "#64748b", marginBottom: 20, lineHeight: 1.6, padding: "10px 12px", background: "#f8fafc", borderRadius: 10, border: "1px solid #e2e8f0" }}>
-                                ต้องการลบแปลงนี้ออกจากโครงการใช่หรือไม่?<br />
-                                <span style={{ color: "#ef4444", fontWeight: 600 }}>การลบจะไม่สามารถกู้คืนได้</span>
+                                ต้องการลบแปลงนี้ใช่หรือไม่?<br />
+                                <span style={{ color: "#ef4444", fontWeight: 600 }}>ข้อมูลแปลงนี้จะไม่สามารถกู้คืนได้</span>
                             </div>
                             <div style={{ display: "flex", gap: 10 }}>
                                 <button
