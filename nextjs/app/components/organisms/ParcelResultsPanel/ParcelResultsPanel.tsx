@@ -1944,7 +1944,7 @@ export function ParcelResultsPanel({
                             <i className="bi bi-pie-chart-fill" />
                         </div>
                         <div style={{ flex: 1 }}>
-                            <div style={{ fontWeight: 700, fontSize: 14, color: "#0f172a" }}>{projectName || "โครงการ"}</div>
+                            <div style={{ fontWeight: 700, fontSize: 14, color: "#0f172a" }}>{projectName ? `โครงการ ${projectName}` : "โครงการ"}</div>
                             <div style={{ fontSize: 12, color: "#64748b" }}>
                                 {carbonResults.length} แปลง · {totalArea.toFixed(2)} ไร่
                             </div>

@@ -845,32 +845,32 @@ function PlotCard({ plot, index, onDelete, onEdit, expanded, onToggle, isMobile 
                 <div style={{ display: "flex", flexDirection: "column", gap: 8, fontSize: 13, color: "#475569" }}>
                   {userEnteredYear ? (
                     // Case 1: User entered year
-                    <div style={{ 
-                        display: "flex", flexWrap: "wrap", justifyContent: "space-between", alignItems: "center", gap: 12, 
-                        padding: "12px 14px", background: "rgba(14,165,233,0.06)", borderRadius: 10, border: "1px solid rgba(14,165,233,0.18)" 
+                    <div style={{
+                      display: "flex", flexWrap: "wrap", justifyContent: "space-between", alignItems: "center", gap: 12,
+                      padding: "12px 14px", background: "rgba(14,165,233,0.06)", borderRadius: 10, border: "1px solid rgba(14,165,233,0.18)"
                     }}>
-                        <div style={{ display: "flex", flexDirection: "column", gap: 6, minWidth: 200, flex: 1 }}>
-                            <span style={{ fontWeight: 700, color: "#0369a1", display: "flex", alignItems: "center", gap: 6, fontSize: 14 }}>
-                                <i className="bi bi-person-check-fill" /> ปีที่ปลูก
-                            </span>
-                            <div style={{ 
-                                display: "flex", alignItems: "flex-start", gap: 6, 
-                                fontSize: 11, color: "#0284c7", fontWeight: 600, 
-                                background: "rgba(14,165,233,0.15)", padding: "6px 8px", 
-                                borderRadius: 6, width: "fit-content", lineHeight: 1.3 
-                            }}>
-                                <i className="bi bi-info-circle-fill" style={{ marginTop: 1, flexShrink: 0 }} />
-                                <span>ข้อมูลจากการระบุของผู้ใช้งาน<br />(นำไปใช้ประมวลผล)</span>
-                            </div>
-                        </div>
-                        <div style={{ 
-                            color: "#0f172a", fontWeight: 800, fontSize: 16, 
-                            flexShrink: 0, marginLeft: "auto",
-                            background: "#fff", padding: "4px 10px", borderRadius: 8,
-                            border: "1px solid rgba(14,165,233,0.2)"
+                      <div style={{ display: "flex", flexDirection: "column", gap: 6, minWidth: 200, flex: 1 }}>
+                        <span style={{ fontWeight: 700, color: "#0369a1", display: "flex", alignItems: "center", gap: 6, fontSize: 14 }}>
+                          <i className="bi bi-person-check-fill" /> ปีที่ปลูก
+                        </span>
+                        <div style={{
+                          display: "flex", alignItems: "flex-start", gap: 6,
+                          fontSize: 11, color: "#0284c7", fontWeight: 600,
+                          background: "rgba(14,165,233,0.15)", padding: "6px 8px",
+                          borderRadius: 6, width: "fit-content", lineHeight: 1.3
                         }}>
-                            {displayYearBE ? `พ.ศ. ${displayYearBE}` : "—"}
+                          <i className="bi bi-info-circle-fill" style={{ marginTop: 1, flexShrink: 0 }} />
+                          <span>ข้อมูลจากการระบุของผู้ใช้งาน<br />(นำไปใช้ประมวลผล)</span>
                         </div>
+                      </div>
+                      <div style={{
+                        color: "#0f172a", fontWeight: 800, fontSize: 16,
+                        flexShrink: 0, marginLeft: "auto",
+                        background: "#fff", padding: "4px 10px", borderRadius: 8,
+                        border: "1px solid rgba(14,165,233,0.2)"
+                      }}>
+                        {displayYearBE ? `พ.ศ. ${displayYearBE}` : "—"}
+                      </div>
                     </div>
                   ) : (
                     // Case 2: Backend only
@@ -881,13 +881,13 @@ function PlotCard({ plot, index, onDelete, onEdit, expanded, onToggle, isMobile 
                             <i className="bi bi-cpu-fill" /> ปีที่ตรวจพบ
                           </span>
                           <div style={{
-                                display: "flex", alignItems: "flex-start", gap: 6,
-                                fontSize: 11, color: "#059669", fontWeight: 600,
-                                background: "rgba(16,185,129,0.1)", padding: "6px 8px",
-                                borderRadius: 6, border: "1px dashed rgba(16,185,129,0.2)", width: "fit-content", lineHeight: 1.3
+                            display: "flex", alignItems: "flex-start", gap: 6,
+                            fontSize: 11, color: "#059669", fontWeight: 600,
+                            background: "rgba(16,185,129,0.1)", padding: "6px 8px",
+                            borderRadius: 6, border: "1px dashed rgba(16,185,129,0.2)", width: "fit-content", lineHeight: 1.3
                           }}>
-                                <i className="bi bi-info-circle-fill" style={{ marginTop: 1, flexShrink: 0 }} />
-                                <span>ข้อมูลอ้างอิงจากระบบที่ใช้ในการประมวลผล</span>
+                            <i className="bi bi-info-circle-fill" style={{ marginTop: 1, flexShrink: 0 }} />
+                            <span>ข้อมูลอ้างอิงจากระบบที่ใช้ในการประมวลผล</span>
                           </div>
                         </div>
                         <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
@@ -1099,19 +1099,19 @@ export default function MyPlotsPage() {
                 </div>
               </div>
               <h1 style={{ fontSize: isMobile ? 28 : 36, fontWeight: 800, color: "#064e3b", marginBottom: 8, lineHeight: 1.2 }}>
-                {viewMode === "all" ? "การจัดการแปลงยางพาราทั้งหมด" : "แปลงยางพาราของฉัน"}
+                {viewMode === "all" ? "การจัดการแปลงยางพาราทั้งหมด" : "แปลงของฉัน"}
               </h1>
               <p style={{ fontSize: isMobile ? 15 : 17, color: "#475569", margin: "0 0 18px", lineHeight: 1.6 }}>
                 {viewMode === "all"
                   ? "ตรวจสอบและจัดการข้อมูลแปลงยางพาราของผู้ใช้งานทุกคนในระบบ"
-                  : "จัดการและติดตามข้อมูลแปลงยาง พร้อมพยากรณ์คาร์บอนรายปี"}
+                  : "จัดการข้อมูลแปลงและผลประเมินคาร์บอนเครดิต"}
               </p>
               {/* Search */}
               <div style={{ position: "relative", maxWidth: isMobile ? "100%" : 440 }}>
                 <i className="bi bi-search" style={{ position: "absolute", left: 13, top: "50%", transform: "translateY(-50%)", color: searchFocused ? "#059669" : "#94a3b8", fontSize: 15, pointerEvents: "none" }} />
                 <input
                   type="text"
-                  placeholder="ค้นหาแปลง ชื่อเจ้าของ หรือจังหวัด..."
+                  placeholder="ค้นหาแปลง ชื่อโครงการ..."
                   value={searchTerm}
                   onChange={e => setSearchTerm(e.target.value)}
                   onFocus={() => setSearchFocused(true)}
@@ -1194,7 +1194,7 @@ export default function MyPlotsPage() {
                   transition: "all 0.2s ease"
                 }}
               >
-                <i className="bi bi-plus-circle" style={{ fontSize: isMobile ? 16 : 18 }} /> วาดแปลงใหม่
+                <i className="bi bi-plus-circle" style={{ fontSize: isMobile ? 16 : 18 }} /> เริ่มโครงการใหม่
               </Link>
             </div>
           </div>
@@ -1204,6 +1204,7 @@ export default function MyPlotsPage() {
         {plots.length > 0 && (
           <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2, 1fr)" : "repeat(auto-fit, minmax(190px, 1fr))", gap: isMobile ? 10 : 14, marginBottom: 24 }}>
             {([
+              { label: "โครงการทั้งหมด", val: new Set(plots.map(p => p.name || "ไม่มีชื่อโครงการ")).size.toLocaleString("th-TH"), unit: "โครงการ", icon: "bi-folder-fill", color: "#3b82f6", bg: "rgba(59,130,246,0.08)" },
               { label: "แปลงทั้งหมด", val: plots.length.toLocaleString("th-TH"), unit: "แปลง", icon: "bi-map", color: "#16a34a", bg: "rgba(22,163,74,0.08)" },
               { label: "พื้นที่รวม", val: totalArea.toFixed(2), unit: "ไร่", icon: "bi-grid-fill", color: "#0d9488", bg: "rgba(13,148,136,0.08)" },
             ] as { label: string; val: string; unit: string; icon: string; color: string; bg: string }[]).map(({ label, val, unit, icon, color, bg }) => (
