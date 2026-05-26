@@ -407,7 +407,7 @@ function PlotDetailCard({
                 {/* Header Section */}
                 <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 12 }}>
                     <span style={{ fontWeight: 700, color: "#047857", display: "flex", alignItems: "center", gap: 6, fontSize: 14 }}>
-                        <i className="bi bi-cpu-fill" /> ข้อมูลที่ใช้ในการประมวลผล
+                        <i className="bi bi-layers-fill" /> ข้อมูลที่ใช้ในการประมวลผล
                     </span>
                 </div>
 
@@ -1955,13 +1955,20 @@ export function ParcelResultsPanel({
                     {expandedResultIdx === "total" && (
                         <div style={{ padding: "14px 14px 16px" }}>
                             <div style={{
-                                background: "linear-gradient(135deg,#f0fdf4,#ecfdf5)",
-                                borderRadius: 12, padding: "16px", marginBottom: 16,
-                                border: "1px solid rgba(16,185,129,0.18)",
-                                display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center"
+                                background: "linear-gradient(to right, rgba(13,148,136,0.08), rgba(20,184,166,0.03))",
+                                border: "1px solid rgba(13,148,136,0.2)",
+                                borderRadius: 12,
+                                padding: "16px",
+                                marginBottom: 16,
+                                display: "flex",
+                                flexDirection: "column",
+                                justifyContent: "center",
+                                alignItems: "center"
                             }}>
-                                <div style={{ fontSize: 13, color: "#0f766e", fontWeight: 700, marginBottom: 4 }}>คาร์บอนรวม</div>
-                                <div style={{ fontWeight: 800, color: "#0d9488", fontSize: isMobile ? 24 : 28 }}>
+                                <div style={{ fontSize: 13, color: "#0f766e", fontWeight: 700, marginBottom: 6, display: "flex", alignItems: "center", gap: 6 }}>
+                                    <i className="bi bi-cloud-arrow-down-fill" /> ปริมาณคาร์บอนเครดิตรวม ณ ปีปัจจุบัน
+                                </div>
+                                <div style={{ fontWeight: 800, color: "#0d9488", fontSize: isMobile ? 24 : 28, lineHeight: 1.1 }}>
                                     {Math.floor(summaryTotalCo2).toLocaleString()} <span style={{ fontSize: isMobile ? 18 : 20, color: "#0f766e" }}>± {Math.round(summaryTotalCo2Ci).toLocaleString()}</span> <span style={{ fontSize: 16, fontWeight: 600, opacity: 0.8 }}>tCO₂eq</span>
                                 </div>
                             </div>

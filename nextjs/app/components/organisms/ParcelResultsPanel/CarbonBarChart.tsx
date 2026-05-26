@@ -272,8 +272,7 @@ export function CarbonBarChart({
           );
         })}
 
-        {/* Y-axis label */}
-        <text x={isMobile ? 2 : PL - 8} y={PT + 6} textAnchor={isMobile ? "start" : "end"} fontSize={isMobile ? 17 : 22} fill="#94a3b8" fontWeight={600}>tCO₂</text>
+
 
         {/* X-axis row labels */}
         {showAge && (
