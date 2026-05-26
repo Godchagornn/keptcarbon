@@ -15,6 +15,10 @@ const HERO_BG =
 const VARIETY_OPTIONS = ["RRIM 600", "RRIT 251"];
 const SPACING_OPTIONS = ["2.5x8", "3x7", "2.5x7", "2x6", "3x8"];
 
+const CURRENT_BE_YEAR = new Date().getFullYear() + 543;
+const NEW_YEAR_OPTIONS = Array.from({ length: 4 }, (_, i) => String(CURRENT_BE_YEAR + i));
+const OLD_YEAR_OPTIONS = Array.from({ length: CURRENT_BE_YEAR - 2534 + 1 }, (_, i) => String(CURRENT_BE_YEAR - i));
+
 function fmtCompact(v: number): string {
   return v.toLocaleString("th-TH", { maximumFractionDigits: 0 });
 }
@@ -393,10 +397,8 @@ function PlotsMapView({ plots, isMobile }: { plots: SavedPlot[], isMobile: boole
   );
 }
 
-const inputStyle: React.CSSProperties = { width: "100%", padding: "10px 14px", borderRadius: 10, border: "1px solid #cbd5e1", fontSize: 16, background: "#fff" };
-const labelStyle: React.CSSProperties = { display: "block", fontSize: 15, fontWeight: 700, color: "#475569", marginBottom: 6 };
 
-function EditPlotModal({ plot, onClose, onSave, isMobile }: { plot: SavedPlot; onClose: () => void; onSave: (p: SavedPlot) => void; isMobile: boolean }) {
+function EditPlotModal({ plot, index, onClose, onSave, isMobile }: { plot: SavedPlot; index: number; onClose: () => void; onSave: (p: SavedPlot) => void; isMobile: boolean }) {
   const form = plot.backendData?.form;
   const isUserYear = !!form?.plantYear;
   const isUserTrees = !!form?.treeCount;
@@ -408,7 +410,7 @@ function EditPlotModal({ plot, onClose, onSave, isMobile }: { plot: SavedPlot; o
     ownerName: plot.ownerName || "",
     province: plot.province || "",
     areaRai: plot.areaRai?.toString() || "",
-    rubberAge: isUserYear && plot.rubberAge ? plot.rubberAge.toString() : "",
+    plantStatus: form?.plantStatus || "",
     trees: isUserTrees && plot.trees ? plot.trees.toString() : "",
     plantYearBE: isUserYear && plot.plantYearBE ? plot.plantYearBE.toString() : "",
     variety: isUserVariety && plot.variety ? plot.variety : "",
@@ -416,7 +418,21 @@ function EditPlotModal({ plot, onClose, onSave, isMobile }: { plot: SavedPlot; o
   });
 
   const handleSave = () => {
-    const ageNum = parseInt(formData.rubberAge) || 0;
+    // Current year BE to calculate age
+    const currentBE = new Date().getFullYear() + 543;
+    let ageNum = 0;
+    
+    let effectivePlantYear = parseInt(formData.plantYearBE) || undefined;
+    
+    if (formData.plantStatus === "replanting") {
+      ageNum = 0;
+      effectivePlantYear = effectivePlantYear || currentBE;
+    } else if (formData.plantStatus === "existing") {
+      if (effectivePlantYear) {
+         ageNum = currentBE - effectivePlantYear;
+      }
+    }
+
     const treesNum = parseInt(formData.trees) || 0;
     const sp = formData.spacing || "2.5x8";
     const newCarbon = (ageNum > 0 && treesNum > 0) ? carbonCo2(ageNum, treesNum, sp) : plot.carbonTotal;
@@ -428,7 +444,8 @@ function EditPlotModal({ plot, onClose, onSave, isMobile }: { plot: SavedPlot; o
 
     const newForm = {
       ...(plot.backendData?.form || {}),
-      plantYear: formData.plantYearBE ? formData.plantYearBE : undefined,
+      plantStatus: formData.plantStatus ? formData.plantStatus : undefined,
+      plantYear: effectivePlantYear ? String(effectivePlantYear) : undefined,
       treeCount: formData.trees ? formData.trees : undefined,
       variety: formData.variety ? formData.variety : undefined,
       spacing: formData.spacing ? formData.spacing : undefined,
@@ -442,7 +459,7 @@ function EditPlotModal({ plot, onClose, onSave, isMobile }: { plot: SavedPlot; o
       areaRai: parseFloat(formData.areaRai) || 0,
       rubberAge: ageNum,
       trees: treesNum,
-      plantYearBE: parseInt(formData.plantYearBE) || undefined,
+      plantYearBE: effectivePlantYear,
       variety: formData.variety,
       spacing: formData.spacing,
       carbonTotal: newCarbon,
@@ -454,61 +471,175 @@ function EditPlotModal({ plot, onClose, onSave, isMobile }: { plot: SavedPlot; o
     });
   };
 
+  const fieldLabel = (icon: string, text: React.ReactNode) => (
+    <label style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 13, fontWeight: 700, color: "#475569", marginBottom: 8, letterSpacing: 0.1 }}>
+      <i className={`bi ${icon}`} style={{ color: "#10b981", fontSize: 14 }} />
+      {text}
+    </label>
+  );
+
+  const SelectField = ({ value, onChange, disabled, children }: { value: string; onChange: (v: string) => void; disabled?: boolean; children: React.ReactNode }) => (
+    <div style={{ position: "relative" }}>
+      <select
+        value={value}
+        onChange={e => onChange(e.target.value)}
+        disabled={disabled}
+        style={{
+          width: "100%", height: 46, padding: "0 42px 0 14px",
+          borderRadius: 12, border: "1.5px solid #e2e8f0",
+          fontSize: 15, color: value ? "#1e293b" : "#94a3b8",
+          background: disabled ? "#f8fafc" : "#fff",
+          appearance: "none", WebkitAppearance: "none",
+          cursor: disabled ? "not-allowed" : "pointer",
+          outline: "none", fontFamily: "inherit",
+          transition: "border-color 0.15s, box-shadow 0.15s",
+        }}
+        onFocus={e => { e.currentTarget.style.borderColor = "#10b981"; e.currentTarget.style.boxShadow = "0 0 0 3px rgba(16,185,129,0.12)"; }}
+        onBlur={e => { e.currentTarget.style.borderColor = "#e2e8f0"; e.currentTarget.style.boxShadow = "none"; }}
+      >
+        {children}
+      </select>
+      <i className="bi bi-chevron-down" style={{ position: "absolute", right: 14, top: "50%", transform: "translateY(-50%)", color: disabled ? "#cbd5e1" : "#94a3b8", fontSize: 13, pointerEvents: "none" }} />
+    </div>
+  );
+
   return (
-    <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.5)", zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
-      <div style={{ background: "#fff", borderRadius: 20, width: "100%", maxWidth: 520, maxHeight: "90vh", overflow: "auto", padding: isMobile ? 20 : 30, boxShadow: "0 20px 40px rgba(0,0,0,0.2)" }}>
-        <div style={{ fontSize: 24, fontWeight: 800, color: "#064e3b", marginBottom: 20, display: "flex", alignItems: "center", gap: 10 }}>
-          <i className="bi bi-pencil-square" style={{ color: "#10b981" }} /> แก้ไขข้อมูลแปลง
-        </div>
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.55)", zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
+      <div style={{ background: "#fff", borderRadius: 24, width: "100%", maxWidth: 480, maxHeight: "88vh", display: "flex", flexDirection: "column", boxShadow: "0 32px 64px rgba(0,0,0,0.22)", overflow: "hidden" }}>
 
-        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 16 }}>
-          <div style={{ gridColumn: "1 / -1" }}>
-            <label style={labelStyle}>ชื่อโครงการ</label>
-            <input type="text" value={formData.name} onChange={e => setFormData(f => ({ ...f, name: e.target.value }))} style={inputStyle} />
-          </div>
-          <div>
-            <label style={labelStyle}>ชื่อเจ้าของ</label>
-            <input type="text" value={formData.ownerName} onChange={e => setFormData(f => ({ ...f, ownerName: e.target.value }))} style={inputStyle} />
-          </div>
-          <div>
-            <label style={labelStyle}>จังหวัด</label>
-            <input type="text" value={formData.province} onChange={e => setFormData(f => ({ ...f, province: e.target.value }))} style={inputStyle} />
-          </div>
-          <div>
-            <label style={labelStyle}>พื้นที่ (ไร่)</label>
-            <input type="number" step="0.01" value={formData.areaRai} onChange={e => setFormData(f => ({ ...f, areaRai: e.target.value }))} style={inputStyle} />
-          </div>
-          <div>
-            <label style={labelStyle}>ปีที่ปลูก (พ.ศ.)</label>
-            <input type="number" value={formData.plantYearBE} onChange={e => setFormData(f => ({ ...f, plantYearBE: e.target.value }))} style={inputStyle} />
-          </div>
-          <div>
-            <label style={labelStyle}>อายุยาง (ปี)</label>
-            <input type="number" value={formData.rubberAge} onChange={e => setFormData(f => ({ ...f, rubberAge: e.target.value }))} style={inputStyle} />
-          </div>
-          <div>
-            <label style={labelStyle}>จำนวนต้น</label>
-            <input type="number" value={formData.trees} onChange={e => setFormData(f => ({ ...f, trees: e.target.value }))} style={inputStyle} />
-          </div>
-          <div>
-            <label style={labelStyle}>พันธุ์ยาง</label>
-            <select value={formData.variety} onChange={e => setFormData(f => ({ ...f, variety: e.target.value }))} style={inputStyle}>
-              <option value="">— ไม่ระบุ —</option>
-              {VARIETY_OPTIONS.map(v => <option key={v} value={v}>{v}</option>)}
-            </select>
-          </div>
-          <div>
-            <label style={labelStyle}>ระยะปลูก</label>
-            <select value={formData.spacing} onChange={e => setFormData(f => ({ ...f, spacing: e.target.value }))} style={inputStyle}>
-              <option value="">— ไม่ระบุ —</option>
-              {SPACING_OPTIONS.map(s => <option key={s} value={s}>{s} ม.</option>)}
-            </select>
+        {/* Header */}
+        <div style={{ padding: isMobile ? "18px 20px 14px" : "22px 28px 16px", borderBottom: "1px solid #f1f5f9", flexShrink: 0 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <div style={{ width: 38, height: 38, borderRadius: 12, background: "linear-gradient(135deg,#10b981,#047857)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+              <i className="bi bi-pencil-square" style={{ color: "#fff", fontSize: 17 }} />
+            </div>
+            <div>
+              <div style={{ fontSize: 18, fontWeight: 800, color: "#064e3b", lineHeight: 1.2 }}>แก้ไขข้อมูลแปลงที่ {index}</div>
+              <div style={{ fontSize: 12, color: "#94a3b8", marginTop: 2 }}>แก้ไขได้เฉพาะสถานะแปลงและรายละเอียดข้อมูล</div>
+            </div>
           </div>
         </div>
 
-        <div style={{ display: "flex", gap: 12, marginTop: 24, justifyContent: "flex-end" }}>
-          <button onClick={onClose} style={{ padding: "10px 20px", borderRadius: 10, border: "none", background: "#f1f5f9", color: "#475569", fontWeight: 700, cursor: "pointer" }}>ยกเลิก</button>
-          <button onClick={handleSave} style={{ padding: "10px 20px", borderRadius: 10, border: "none", background: "#10b981", color: "#fff", fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", gap: 6 }}>
+        {/* Scrollable body */}
+        <div style={{ overflowY: "auto", padding: isMobile ? "18px 20px" : "22px 28px", flex: 1 }}>
+
+          {/* สถานะแปลง */}
+          <div style={{ marginBottom: 20 }}>
+            {fieldLabel("bi-info-circle", <><span>สถานะแปลง</span><span style={{ color: "#ef4444", marginLeft: 3 }}>*</span></>)}
+            <div style={{ display: "flex", gap: 10 }}>
+              {(["replanting", "existing"] as const).map(status => {
+                const active = formData.plantStatus === status;
+                const label = status === "replanting" ? "เริ่มปลูกใหม่" : "ปลูกมาแล้ว";
+                return (
+                  <div
+                    key={status}
+                    onClick={() => setFormData(f => ({
+                      ...f,
+                      plantStatus: status,
+                      plantYearBE: status === "replanting" ? String(new Date().getFullYear() + 543) : "",
+                    }))}
+                    style={{
+                      flex: 1, padding: "11px 14px", borderRadius: 12, cursor: "pointer", userSelect: "none",
+                      display: "flex", alignItems: "center", gap: 9,
+                      border: active ? "2px solid #10b981" : "1.5px solid #e2e8f0",
+                      background: active ? "rgba(16,185,129,0.06)" : "#fafafa",
+                      transition: "all 0.18s",
+                    }}
+                  >
+                    <div style={{
+                      width: 20, height: 20, borderRadius: "50%", border: "2px solid",
+                      borderColor: active ? "#10b981" : "#cbd5e1",
+                      display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
+                      background: "#fff", transition: "all 0.18s",
+                    }}>
+                      {active && <div style={{ width: 10, height: 10, borderRadius: "50%", background: "#10b981" }} />}
+                    </div>
+                    <span style={{ fontSize: 14, fontWeight: active ? 700 : 500, color: active ? "#047857" : "#64748b" }}>{label}</span>
+                  </div>
+                );
+              })}
+            </div>
+            {!formData.plantStatus && (
+              <div style={{ fontSize: 12, color: "#f59e0b", marginTop: 8, display: "flex", alignItems: "center", gap: 5 }}>
+                <i className="bi bi-exclamation-circle-fill" /> กรุณาเลือกสถานะแปลงก่อน
+              </div>
+            )}
+          </div>
+
+          {/* Fields section */}
+          <div style={{ display: "flex", flexDirection: "column", gap: 16, opacity: formData.plantStatus ? 1 : 0.45, transition: "opacity 0.25s", pointerEvents: formData.plantStatus ? "auto" : "none" }}>
+
+            {/* ปีที่ปลูก */}
+            <div>
+              {fieldLabel("bi-calendar-event", <>
+                <span>ปีที่ปลูก (พ.ศ.)</span>
+                {formData.plantStatus === "existing" && <span style={{ color: "#ef4444", marginLeft: 3 }}>*</span>}
+              </>)}
+              <SelectField
+                value={formData.plantYearBE}
+                onChange={v => setFormData(f => ({ ...f, plantYearBE: v }))}
+                disabled={!formData.plantStatus}
+              >
+                <option value="">— เลือกปีที่ปลูก —</option>
+                {(formData.plantStatus === "replanting" ? NEW_YEAR_OPTIONS : formData.plantStatus === "existing" ? OLD_YEAR_OPTIONS : []).map(y => (
+                  <option key={y} value={y}>{y}</option>
+                ))}
+              </SelectField>
+            </div>
+
+            {/* พันธุ์ยาง + ระยะปลูก */}
+            <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 14 }}>
+              <div>
+                {fieldLabel("bi-tags", "พันธุ์ยาง")}
+                <SelectField value={formData.variety} onChange={v => setFormData(f => ({ ...f, variety: v }))}>
+                  <option value="">— ไม่ระบุ —</option>
+                  {VARIETY_OPTIONS.map(v => <option key={v} value={v}>{v}</option>)}
+                </SelectField>
+              </div>
+              <div>
+                {fieldLabel("bi-arrows-fullscreen", "ระยะปลูก")}
+                <SelectField value={formData.spacing} onChange={v => setFormData(f => ({ ...f, spacing: v }))}>
+                  <option value="">— ไม่ระบุ —</option>
+                  {SPACING_OPTIONS.map(s => <option key={s} value={s}>{s} ม.</option>)}
+                </SelectField>
+              </div>
+            </div>
+
+            {/* จำนวนต้น */}
+            <div>
+              {fieldLabel("bi-tree-fill", "จำนวนต้น")}
+              <div style={{ position: "relative" }}>
+                <input
+                  type="number"
+                  value={formData.trees}
+                  onChange={e => setFormData(f => ({ ...f, trees: e.target.value }))}
+                  placeholder="ระบุจำนวนต้น"
+                  style={{
+                    width: "100%", height: 46, padding: "0 52px 0 14px",
+                    borderRadius: 12, border: "1.5px solid #e2e8f0",
+                    fontSize: 15, color: "#1e293b", background: "#fff",
+                    outline: "none", fontFamily: "inherit",
+                    transition: "border-color 0.15s, box-shadow 0.15s",
+                  }}
+                  onFocus={e => { e.currentTarget.style.borderColor = "#10b981"; e.currentTarget.style.boxShadow = "0 0 0 3px rgba(16,185,129,0.12)"; }}
+                  onBlur={e => { e.currentTarget.style.borderColor = "#e2e8f0"; e.currentTarget.style.boxShadow = "none"; }}
+                />
+                <span style={{ position: "absolute", right: 14, top: "50%", transform: "translateY(-50%)", fontSize: 13, color: "#94a3b8", pointerEvents: "none" }}>ต้น</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div style={{ padding: isMobile ? "14px 20px" : "16px 28px", borderTop: "1px solid #f1f5f9", display: "flex", gap: 10, justifyContent: "flex-end", flexShrink: 0, background: "#fafafa" }}>
+          <button
+            onClick={onClose}
+            style={{ padding: "10px 22px", borderRadius: 11, border: "1.5px solid #e2e8f0", background: "#fff", color: "#64748b", fontWeight: 700, fontSize: 15, cursor: "pointer" }}
+          >ยกเลิก</button>
+          <button
+            onClick={handleSave}
+            style={{ padding: "10px 22px", borderRadius: 11, border: "none", background: "linear-gradient(135deg,#10b981,#047857)", color: "#fff", fontWeight: 700, fontSize: 15, cursor: "pointer", display: "flex", alignItems: "center", gap: 7, boxShadow: "0 4px 14px rgba(16,185,129,0.35)" }}
+          >
             <i className="bi bi-floppy-disk" /> บันทึก
           </button>
         </div>
@@ -579,7 +710,7 @@ function PlotMiniMap({ plot, isMobile, index }: { plot: SavedPlot; isMobile: boo
   );
 }
 
-function PlotCard({ plot, index, onDelete, onEdit, expanded, onToggle, isMobile }: { plot: SavedPlot; index: number; onDelete: () => void; onEdit?: (p: SavedPlot) => void; expanded: boolean; onToggle: () => void; isMobile: boolean }) {
+function PlotCard({ plot, index, onDelete, onEdit, expanded, onToggle, isMobile }: { plot: SavedPlot; index: number; onDelete: () => void; onEdit?: (p: SavedPlot, i: number) => void; expanded: boolean; onToggle: () => void; isMobile: boolean }) {
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [activeTab, setActiveTab] = useState<"map" | "carbon">("map");
 
@@ -746,7 +877,7 @@ function PlotCard({ plot, index, onDelete, onEdit, expanded, onToggle, isMobile 
                 <i className="bi bi-magic" style={{ fontSize: 14 }} />
               </Link>
               <button
-                onClick={() => onEdit?.(plot)}
+                onClick={() => onEdit?.(plot, index)}
                 title="แก้ไข"
                 style={{ width: 34, height: 34, borderRadius: 9, background: "#f1f5f9", color: "#475569", border: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", transition: "background 0.15s" }}
                 onMouseEnter={e => { e.currentTarget.style.background = "#e2e8f0"; }}
@@ -1092,7 +1223,7 @@ export default function MyPlotsPage() {
   const [expandedProjects, setExpandedProjects] = useState<Record<string, boolean>>({});
   const toggleProject = (pName: string) => setExpandedProjects(prev => ({ ...prev, [pName]: !prev[pName] }));
 
-  const [editingPlot, setEditingPlot] = useState<SavedPlot | null>(null);
+  const [editingPlot, setEditingPlot] = useState<{ plot: SavedPlot; index: number } | null>(null);
 
   const handleUpdatePlot = (updated: SavedPlot) => {
     if (!user) return;
@@ -1322,7 +1453,7 @@ export default function MyPlotsPage() {
             </div>
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: isMobile ? 24 : 32 }}>
-              {editingPlot && <EditPlotModal plot={editingPlot} onClose={() => setEditingPlot(null)} onSave={handleUpdatePlot} isMobile={isMobile} />}
+              {editingPlot && <EditPlotModal plot={editingPlot.plot} index={editingPlot.index} onClose={() => setEditingPlot(null)} onSave={handleUpdatePlot} isMobile={isMobile} />}
               {projectGroups.map((group, gIdx) => (
                 <div key={`${group.projectName}-${gIdx}`} style={{ position: "relative", background: "#fff", borderRadius: 24, border: "1px solid rgba(16,185,129,0.2)", overflow: "hidden", boxShadow: "0 10px 30px rgba(0,0,0,0.03)" }}>
                   {/* Project Header */}
@@ -1362,7 +1493,7 @@ export default function MyPlotsPage() {
                             plot={plot}
                             index={i + 1}
                             onDelete={() => handleDelete(plot.id)}
-                            onEdit={setEditingPlot}
+                            onEdit={(p, idx) => setEditingPlot({ plot: p, index: idx })}
                             expanded={expandedPlotId === plot.id}
                             onToggle={() => setExpandedPlotId(prev => prev === plot.id ? null : plot.id)}
                             isMobile={isMobile}
