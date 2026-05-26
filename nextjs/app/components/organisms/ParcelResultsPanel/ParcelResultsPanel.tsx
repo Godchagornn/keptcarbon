@@ -26,6 +26,7 @@ type Props = {
     onMapPlotSelected?: (idx: number | "total") => void;
     onDeleteParcel?: (idx: number) => void;
     onDrawMore?: () => void;
+    onCancelDraw?: () => void;
     isDrawing?: boolean;
     onLandUseChange?: (allPlotsChecked: Record<number, Record<string, boolean>>, focusedPlotIdx?: number | null) => void;
     onProjectTypeChange?: (type: "replanting" | "existing") => void;
@@ -371,26 +372,26 @@ function PlotDetailCard({
         <div style={{ display: "flex", flexDirection: "column", gap: 8, fontSize: 13, color: "#475569" }}>
             {userEnteredYear ? (
                 // Case 1: User entered year
-                <div style={{ 
-                    display: "flex", flexWrap: "wrap", justifyContent: "space-between", alignItems: "center", gap: 12, 
-                    padding: "12px 14px", background: "rgba(14,165,233,0.06)", borderRadius: 10, border: "1px solid rgba(14,165,233,0.18)" 
+                <div style={{
+                    display: "flex", flexWrap: "wrap", justifyContent: "space-between", alignItems: "center", gap: 12,
+                    padding: "12px 14px", background: "rgba(14,165,233,0.06)", borderRadius: 10, border: "1px solid rgba(14,165,233,0.18)"
                 }}>
                     <div style={{ display: "flex", flexDirection: "column", gap: 6, minWidth: 200, flex: 1 }}>
                         <span style={{ fontWeight: 700, color: "#0369a1", display: "flex", alignItems: "center", gap: 6, fontSize: 14 }}>
                             <i className="bi bi-person-check-fill" /> ปีที่ปลูก
                         </span>
-                        <div style={{ 
-                            display: "flex", alignItems: "flex-start", gap: 6, 
-                            fontSize: 11, color: "#0284c7", fontWeight: 600, 
-                            background: "rgba(14,165,233,0.15)", padding: "6px 8px", 
-                            borderRadius: 6, width: "fit-content", lineHeight: 1.3 
+                        <div style={{
+                            display: "flex", alignItems: "flex-start", gap: 6,
+                            fontSize: 11, color: "#0284c7", fontWeight: 600,
+                            background: "rgba(14,165,233,0.15)", padding: "6px 8px",
+                            borderRadius: 6, width: "fit-content", lineHeight: 1.3
                         }}>
                             <i className="bi bi-info-circle-fill" style={{ marginTop: 1, flexShrink: 0 }} />
                             <span>ข้อมูลจากการระบุของผู้ใช้งาน<br />(นำไปใช้ประมวลผล)</span>
                         </div>
                     </div>
-                    <div style={{ 
-                        color: "#0f172a", fontWeight: 800, fontSize: 16, 
+                    <div style={{
+                        color: "#0f172a", fontWeight: 800, fontSize: 16,
                         flexShrink: 0, marginLeft: "auto",
                         background: "#fff", padding: "4px 10px", borderRadius: 8,
                         border: "1px solid rgba(14,165,233,0.2)"
@@ -401,60 +402,60 @@ function PlotDetailCard({
             ) : (
                 // Case 2: Backend only
                 yearBoxItems.length > 0 && (
-                  <div style={{ padding: "12px 14px", background: "rgba(16,185,129,0.04)", borderRadius: 10, border: "1px solid rgba(16,185,129,0.15)" }}>
-                    <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 12 }}>
-                      <span style={{ fontWeight: 700, color: "#047857", display: "flex", alignItems: "center", gap: 6, fontSize: 14 }}>
-                        <i className="bi bi-cpu-fill" /> ปีที่ตรวจพบ
-                      </span>
-                      <div style={{
-                            display: "flex", alignItems: "flex-start", gap: 6,
-                            fontSize: 11, color: "#059669", fontWeight: 600,
-                            background: "rgba(16,185,129,0.1)", padding: "6px 8px",
-                            borderRadius: 6, border: "1px dashed rgba(16,185,129,0.2)", width: "fit-content", lineHeight: 1.3
-                      }}>
-                            <i className="bi bi-info-circle-fill" style={{ marginTop: 1, flexShrink: 0 }} />
-                            <span>ข้อมูลอ้างอิงจากระบบที่ใช้ในการประมวลผล</span>
-                      </div>
-                    </div>
-                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
-                      {yearBoxItems.slice(0, 3).map((box, bi) => (
-                        <div key={bi} style={{
-                          padding: "4px 10px",
-                          background: "rgba(100,116,139,0.06)",
-                          borderRadius: 8,
-                          border: "1px solid rgba(100,116,139,0.15)",
-                          fontWeight: 500,
-                          fontSize: 12,
-                          color: "#475569",
-                        }}>
-                          {box.label}{box.pct > 0 ? ` (${box.pct}%)` : ""}
+                    <div style={{ padding: "12px 14px", background: "rgba(16,185,129,0.04)", borderRadius: 10, border: "1px solid rgba(16,185,129,0.15)" }}>
+                        <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 12 }}>
+                            <span style={{ fontWeight: 700, color: "#047857", display: "flex", alignItems: "center", gap: 6, fontSize: 14 }}>
+                                <i className="bi bi-cpu-fill" /> ปีที่ตรวจพบ
+                            </span>
+                            <div style={{
+                                display: "flex", alignItems: "flex-start", gap: 6,
+                                fontSize: 11, color: "#059669", fontWeight: 600,
+                                background: "rgba(16,185,129,0.1)", padding: "6px 8px",
+                                borderRadius: 6, border: "1px dashed rgba(16,185,129,0.2)", width: "fit-content", lineHeight: 1.3
+                            }}>
+                                <i className="bi bi-info-circle-fill" style={{ marginTop: 1, flexShrink: 0 }} />
+                                <span>ข้อมูลอ้างอิงจากระบบที่ใช้ในการประมวลผล</span>
+                            </div>
                         </div>
-                      ))}
-                      {yearBoxItems.length > 3 && (
-                        <span style={{ fontSize: 14, color: "#94a3b8", fontWeight: 600 }}>...</span>
-                      )}
+                        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+                            {yearBoxItems.slice(0, 3).map((box, bi) => (
+                                <div key={bi} style={{
+                                    padding: "4px 10px",
+                                    background: "rgba(100,116,139,0.06)",
+                                    borderRadius: 8,
+                                    border: "1px solid rgba(100,116,139,0.15)",
+                                    fontWeight: 500,
+                                    fontSize: 12,
+                                    color: "#475569",
+                                }}>
+                                    {box.label}{box.pct > 0 ? ` (${box.pct}%)` : ""}
+                                </div>
+                            ))}
+                            {yearBoxItems.length > 3 && (
+                                <span style={{ fontSize: 14, color: "#94a3b8", fontWeight: 600 }}>...</span>
+                            )}
+                        </div>
                     </div>
-                  </div>
                 )
             )}
 
             {/* Year distribution from note (both cases) */}
             {yearNotes.length > 0 && (
                 <div style={{ padding: "10px 14px", background: "rgba(100,116,139,0.04)", borderRadius: 10, border: "1px solid rgba(100,116,139,0.12)", marginTop: 4 }}>
-                  <div style={{ fontSize: 12, color: "#475569", fontWeight: 700, marginBottom: 6, display: "flex", alignItems: "center", gap: 6 }}>
-                    <i className="bi bi-pie-chart-fill" /> สัดส่วนปีที่ปลูกที่ตรวจพบในแปลง:
-                  </div>
-                  <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                    {yearNotes.slice(0, 3).map((note, ni) => (
-                      <span key={ni} style={{ fontSize: 12, color: "#64748b", fontWeight: 500, display: "flex", alignItems: "center", gap: 6 }}>
-                        <i className="bi bi-caret-right-fill" style={{ color: "#94a3b8", fontSize: 10 }} />
-                        {convertYearNoteToBE(note)}
-                      </span>
-                    ))}
-                    {yearNotes.length > 3 && (
-                      <span style={{ fontSize: 12, color: "#94a3b8", paddingLeft: 18 }}>...</span>
-                    )}
-                  </div>
+                    <div style={{ fontSize: 12, color: "#475569", fontWeight: 700, marginBottom: 6, display: "flex", alignItems: "center", gap: 6 }}>
+                        <i className="bi bi-pie-chart-fill" /> สัดส่วนปีที่ปลูกที่ตรวจพบในแปลง:
+                    </div>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                        {yearNotes.slice(0, 3).map((note, ni) => (
+                            <span key={ni} style={{ fontSize: 12, color: "#64748b", fontWeight: 500, display: "flex", alignItems: "center", gap: 6 }}>
+                                <i className="bi bi-caret-right-fill" style={{ color: "#94a3b8", fontSize: 10 }} />
+                                {convertYearNoteToBE(note)}
+                            </span>
+                        ))}
+                        {yearNotes.length > 3 && (
+                            <span style={{ fontSize: 12, color: "#94a3b8", paddingLeft: 18 }}>...</span>
+                        )}
+                    </div>
                 </div>
             )}
 
@@ -488,6 +489,7 @@ export function ParcelResultsPanel({
     onMapPlotSelected,
     onDeleteParcel,
     onDrawMore,
+    onCancelDraw,
     isDrawing,
     onLandUseChange,
     onProjectTypeChange,
@@ -1209,41 +1211,11 @@ export function ParcelResultsPanel({
                 <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 14 }}>
                     <div className="prp-header-block" style={{ marginBottom: 0 }}>
                         <div className="prp-main-title" style={{ fontSize: isMobile ? 16 : 18 }}>
-                            <i className="bi bi-pencil-square me-2" style={{ color: "#10b981" }} />กรอกข้อมูลแปลง
+                            <i className="bi bi-pencil-square me-2" style={{ color: "#10b981" }} />
+                            {projectName?.trim() ? `โครงการ ${projectName}` : "กรอกข้อมูลแปลง"}
                         </div>
                         <div className="prp-subtitle">กรอกหรือข้ามได้ — ข้อมูลจะนำไปประมวลผลคาร์บอน</div>
                     </div>
-                    {onBack && (
-                        <button
-                            onClick={onBack}
-                            style={{
-                                fontSize: isMobile ? 10 : 11,
-                                fontWeight: 700,
-                                color: "#0f766e",
-                                cursor: "pointer",
-                                background: "#f0fdfa",
-                                border: "1px solid rgba(13,148,136,0.3)",
-                                padding: isMobile ? "4px 8px" : "6px 12px",
-                                borderRadius: isMobile ? 6 : 8,
-                                display: "flex",
-                                alignItems: "center",
-                                gap: isMobile ? 4 : 6,
-                                transition: "all 0.2s",
-                                outline: "none",
-                                boxShadow: "0 2px 5px rgba(13,148,136,0.05)"
-                            }}
-                            onMouseOver={(e) => {
-                                e.currentTarget.style.background = "#ccfbf1";
-                                e.currentTarget.style.borderColor = "rgba(13,148,136,0.5)";
-                            }}
-                            onMouseOut={(e) => {
-                                e.currentTarget.style.background = "#f0fdfa";
-                                e.currentTarget.style.borderColor = "rgba(13,148,136,0.3)";
-                            }}
-                        >
-                            <i className="bi bi-arrow-left-circle" /> ย้อนกลับ
-                        </button>
-                    )}
                 </div>
 
                 {/* Action buttons (Moved to top) */}
@@ -1338,7 +1310,12 @@ export function ParcelResultsPanel({
                 <div style={{ display: "flex", gap: isMobile ? 6 : 8, marginBottom: 16, flexWrap: "wrap", justifyContent: "stretch" }}>
                     {onDrawMore && !isDrawing && (
                         <button className="prp-btn-ghost" style={{ flex: "1 1 calc(33% - 8px)", minWidth: 100, padding: isMobile ? "8px 6px" : "10px 12px", fontSize: isMobile ? 12 : 14, display: "flex", flexDirection: "row", justifyContent: "center", alignItems: "center", gap: 6, background: "rgba(16,185,129,0.1)", color: "#059669", border: "1px solid rgba(16,185,129,0.2)", borderRadius: isMobile ? 10 : 12 }} onClick={onDrawMore}>
-                            <i className="bi bi-pencil-square" style={{ fontSize: isMobile ? 14 : 16 }} /> <span style={{ fontWeight: 600, textAlign: "center", whiteSpace: "nowrap" }}>วาดเพิ่ม</span>
+                            <i className="bi bi-pencil-square" style={{ fontSize: isMobile ? 14 : 16 }} /> <span style={{ fontWeight: 600, textAlign: "center", whiteSpace: "nowrap" }}>วาดแปลงเพิ่ม</span>
+                        </button>
+                    )}
+                    {onCancelDraw && isDrawing && (
+                        <button className="prp-btn-ghost" style={{ flex: "1 1 calc(33% - 8px)", minWidth: 100, padding: isMobile ? "8px 6px" : "10px 12px", fontSize: isMobile ? 12 : 14, display: "flex", flexDirection: "row", justifyContent: "center", alignItems: "center", gap: 6, background: "rgba(239,68,68,0.1)", color: "#ef4444", border: "1px solid rgba(239,68,68,0.2)", borderRadius: isMobile ? 10 : 12 }} onClick={onCancelDraw}>
+                            <i className="bi bi-x-circle" style={{ fontSize: isMobile ? 14 : 16 }} /> <span style={{ fontWeight: 600, textAlign: "center", whiteSpace: "nowrap" }}>ยกเลิกการวาด</span>
                         </button>
                     )}
                     <button
@@ -1360,7 +1337,7 @@ export function ParcelResultsPanel({
                         ) : saveState === "done" ? (
                             <><i className="bi bi-check-circle-fill" style={{ fontSize: isMobile ? 14 : 16 }} /> <span style={{ fontWeight: 600, textAlign: "center", whiteSpace: "nowrap" }}>บันทึกแล้ว</span></>
                         ) : (
-                            <><i className="bi bi-save" style={{ fontSize: isMobile ? 14 : 16 }} /> <span style={{ fontWeight: 600, textAlign: "center", whiteSpace: "nowrap" }}>บันทึกแปลง</span></>
+                            <><i className="bi bi-save" style={{ fontSize: isMobile ? 14 : 16 }} /> <span style={{ fontWeight: 600, textAlign: "center", whiteSpace: "nowrap" }}>บันทึกข้อมูล</span></>
                         )}
                     </button>
                     <button

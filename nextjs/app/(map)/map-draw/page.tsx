@@ -2651,6 +2651,7 @@ function MapDrawContent() {
                 onMapPlotSelected={setSelectedPlotIndex}
                 onDeleteParcel={deleteParcel}
                 onDrawMore={startDrawFlow}
+                onCancelDraw={cancelDrawMode}
                 isDrawing={drawing}
                 onLandUseChange={handleLandUseChange}
                 onProjectTypeChange={handleProjectTypeChange}
