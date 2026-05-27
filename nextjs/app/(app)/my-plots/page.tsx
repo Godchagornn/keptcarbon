@@ -458,14 +458,18 @@ function EditPlotModal({ plot, index, onClose, onSave, isMobile }: { plot: Saved
       }
     }
 
-    const treesNum = parseInt(formData.trees) || 0;
-    const sp = formData.spacing || "2.5x8";
-    const newCarbon = (ageNum > 0 && treesNum > 0) ? carbonCo2(ageNum, treesNum, sp) : plot.carbonTotal;
+    const treesNum = parseInt(formData.trees) || plot.trees || 0;
+    const sp = formData.spacing || plot.spacing || "";
+
+    const newCarbon = (treesNum > 0) ? carbonCo2(ageNum, treesNum, sp) : plot.carbonTotal;
     const forecast = {
       yr3: carbonCo2(ageNum + 3, treesNum, sp),
       yr5: carbonCo2(ageNum + 5, treesNum, sp),
       yr7: carbonCo2(ageNum + 7, treesNum, sp),
     };
+
+    const chartStartYearBE = effectivePlantYear ? effectivePlantYear + ageNum : currentBE;
+    const newProfile = (treesNum > 0) ? buildBarPoints(ageNum, chartStartYearBE, treesNum, sp) : (plot.carbonProfile || []);
 
     const newForm = {
       ...(plot.backendData?.form || {}),
@@ -485,9 +489,11 @@ function EditPlotModal({ plot, index, onClose, onSave, isMobile }: { plot: Saved
       rubberAge: ageNum,
       trees: treesNum,
       plantYearBE: effectivePlantYear,
+      plantStatus: formData.plantStatus,
       variety: formData.variety,
       spacing: formData.spacing,
       carbonTotal: newCarbon,
+      carbonProfile: newProfile,
       forecast,
       backendData: {
         ...(plot.backendData || {}),
@@ -869,7 +875,7 @@ function PlotMiniMap({ plot, isMobile, index }: { plot: SavedPlot; isMobile: boo
 }
 
 function ProjectCarbonSummary({ plots, isMobile }: { plots: SavedPlot[]; isMobile: boolean }) {
-  const [isExpanded, setIsExpanded] = useState(true);
+  const [isExpanded, setIsExpanded] = useState(false);
   const currentYearBE = new Date().getFullYear() + 543;
 
   const { combinedPts, totalNow, ciNow } = useMemo(() => {
@@ -931,13 +937,13 @@ function ProjectCarbonSummary({ plots, isMobile }: { plots: SavedPlot[]; isMobil
       marginBottom: 4,
     }}>
       {/* summary number row */}
-      <div 
+      <div
         onClick={() => combinedPts.length > 0 && setIsExpanded(!isExpanded)}
-        style={{ 
-          textAlign: "center", 
-          marginBottom: (isExpanded && combinedPts.length > 0) ? 10 : 0, 
+        style={{
+          textAlign: "center",
+          marginBottom: (isExpanded && combinedPts.length > 0) ? 10 : 0,
           position: "relative",
-          cursor: combinedPts.length > 0 ? "pointer" : "default" 
+          cursor: combinedPts.length > 0 ? "pointer" : "default"
         }}
       >
         {combinedPts.length > 0 && (
@@ -1632,11 +1638,11 @@ export default function MyPlotsPage() {
                 </div>
               </div>
               <h1 style={{ fontSize: isMobile ? 28 : 36, fontWeight: 800, color: "#064e3b", marginBottom: 8, lineHeight: 1.2 }}>
-                {viewMode === "all" ? "การจัดการแปลงยางพาราทั้งหมด" : "แปลงของฉัน"}
+                {viewMode === "all" ? "การจัดการแปลงทั้งหมด" : "แปลงของฉัน"}
               </h1>
               <p style={{ fontSize: isMobile ? 15 : 17, color: "#475569", margin: "0 0 18px", lineHeight: 1.6 }}>
                 {viewMode === "all"
-                  ? "ตรวจสอบและจัดการข้อมูลแปลงยางพาราของผู้ใช้งานทุกคนในระบบ"
+                  ? "ตรวจสอบและจัดการข้อมูลแปลงของผู้ใช้งานทุกคนในระบบ"
                   : "จัดการข้อมูลแปลงและผลประเมินคาร์บอนเครดิต"}
               </p>
               {/* Search */}
