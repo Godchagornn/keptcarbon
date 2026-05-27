@@ -944,10 +944,10 @@ function ProjectCarbonSummary({ plots, isMobile }: { plots: SavedPlot[]; isMobil
           <span style={{ fontSize: isMobile ? 12 : 14, fontWeight: 700, color: "#0d9488" }}>tCO₂eq</span>
         </div>
       </div>
-      {/* chart — constrained so it doesn't dominate on desktop */}
+      {/* chart — full width on desktop for better widescreen layout */}
       {combinedPts.length > 0 && (
-        <div style={{ maxWidth: isMobile ? "100%" : 560, margin: "0 auto" }}>
-          <CarbonBarChart pts={combinedPts} isMobile={true} title="ปริมาณคาร์บอนกักเก็บ(tCO₂eq)" narrowMode />
+        <div style={{ width: "100%" }}>
+          <CarbonBarChart pts={combinedPts} isMobile={isMobile} title="ปริมาณคาร์บอนกักเก็บ(tCO₂eq)" narrowMode={false} />
         </div>
       )}
     </div>
