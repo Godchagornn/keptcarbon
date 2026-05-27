@@ -313,7 +313,11 @@ function aggregateProfiles(responses: EstimationResponse[], fallbackBaseAge: num
     const sortedYears = Array.from(yearMap.keys())
         .sort((a, b) => a - b);
 
-    const pts: BarPoint[] = sortedYears.map((year, j) => {
+    // Limit to the length of the shortest plot's profile
+    const minLength = Math.min(...profiles.map(p => p.length).filter(l => l > 0));
+    const validSortedYears = minLength !== Infinity && minLength > 0 ? sortedYears.slice(0, minLength) : sortedYears;
+
+    const pts: BarPoint[] = validSortedYears.map((year, j) => {
         const data = yearMap.get(year)!;
         const avgAge = data.validAgeCount > 0 ? Math.round(data.totalAge / data.validAgeCount) : fallbackBaseAge + j;
         const totalCI = data.sumLinearCI;

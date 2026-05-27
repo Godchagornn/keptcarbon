@@ -966,6 +966,7 @@ function ProjectCarbonSummary({ plots, isMobile }: { plots: SavedPlot[]; isMobil
     const sumMap = new Map<number, { co2: number; sumLinearCi: number; age: number; count: number }>();
     let fallbackTotal = 0;
     let fallbackLinearCi = 0;
+    let minLength = Infinity;
 
     for (const plot of plots) {
       const isProcessed = plot.processed === true || (plot.carbonProfile && plot.carbonProfile.length > 0) || (plot.carbonTotal > 0);
@@ -1001,15 +1002,8 @@ function ProjectCarbonSummary({ plots, isMobile }: { plots: SavedPlot[]; isMobil
     }
 
     const sorted = Array.from(sumMap.entries()).sort((a, b) => a[0] - b[0]);
-    // Truncate to the length where ALL active plots have data to avoid drops
-    // Find the max count of plots that exist in the first year (currentYearBE)
-    const currentPtData = sumMap.get(currentYearBE);
-    const expectedPlotCount = currentPtData ? currentPtData.count : 0;
-
-    // Filter out trailing years where some plots dropped off, to prevent chart dropping
-    const validSorted = expectedPlotCount > 0
-      ? sorted.filter(([yearBE, d]) => yearBE <= currentYearBE || d.count === expectedPlotCount)
-      : sorted;
+    // Truncate the combined graph to the length of the shortest plot's graph
+    const validSorted = minLength !== Infinity ? sorted.slice(0, minLength) : sorted;
 
     const combinedPts: BarPoint[] = validSorted.map(([yearBE, d], i) => ({
       age: Math.round(d.age / d.count), yearBE, year_at: i,
@@ -1174,14 +1168,10 @@ function PlotCard({ plot, index, onDelete, onEdit, expanded, onToggle, isMobile 
   const infoItems = [
     { label: "พื้นที่ (ไร่)", val: plot.areaRai > 0 ? plot.areaRai.toFixed(2) : "", unit: "", icon: "bi-grid-3x3", color: "#0d9488", bg: "rgba(13,148,136,0.12)" },
     { label: "สถานะแปลง", val: plantStatusLabel || "", unit: "", icon: "bi-check2-circle", color: "#f59e0b", bg: "rgba(245,158,11,0.12)" },
-    // ปีที่ปลูก: user input → ep year → plot.plantYearBE
-    { label: "ปีที่ปลูก", val: form?.plantYear ? String(form.plantYear) : (isProcessed && displayYearBE ? String(displayYearBE) : ""), unit: "", icon: "bi-calendar2-check", color: "#3b82f6", bg: "rgba(59,130,246,0.12)" },
-    // พันธุ์ยาง: user input → ep value (after processing)
-    { label: "พันธุ์ยาง", val: isVarietyFromUser ? form.variety : (isProcessed && displayVariety ? displayVariety : ""), unit: "", icon: "bi-patch-check-fill", color: "#8b5cf6", bg: "rgba(139,92,246,0.12)" },
-    // ระยะปลูก: user input → ep value (after processing)
-    { label: "ระยะปลูก (ม.)", val: isSpacingFromUser ? form.spacing : (isProcessed && displaySpacing ? displaySpacing : ""), unit: "", icon: "bi-arrows-fullscreen", color: "#f59e0b", bg: "rgba(245,158,11,0.12)" },
-    // จำนวนต้น: user input → ep value (after processing)
-    { label: "จำนวนต้น ", val: isTreeCountFromUser && form?.treeCount ? parseInt(form.treeCount).toLocaleString("th-TH") : (isProcessed && displayTreeCount > 0 ? displayTreeCount.toLocaleString("th-TH") : ""), unit: "", icon: "bi-tree-fill", color: "#10b981", bg: "rgba(16,185,129,0.12)" },
+    { label: "ปีที่ปลูก", val: form?.plantYear ? String(form.plantYear) : "", unit: "", icon: "bi-calendar2-check", color: "#3b82f6", bg: "rgba(59,130,246,0.12)" },
+    { label: "พันธุ์ยาง", val: isVarietyFromUser ? form.variety : "", unit: "", icon: "bi-patch-check-fill", color: "#8b5cf6", bg: "rgba(139,92,246,0.12)" },
+    { label: "ระยะปลูก (ม.)", val: isSpacingFromUser ? form.spacing : "", unit: "", icon: "bi-arrows-fullscreen", color: "#f59e0b", bg: "rgba(245,158,11,0.12)" },
+    { label: "จำนวนต้น ", val: isTreeCountFromUser && form?.treeCount ? parseInt(form.treeCount).toLocaleString("th-TH") : "", unit: "", icon: "bi-tree-fill", color: "#10b981", bg: "rgba(16,185,129,0.12)" },
   ];
 
   return (
@@ -1669,7 +1659,11 @@ export default function MyPlotsPage() {
 
       console.log('[ประมวลผล] 📤 Polygons sent to backend:', JSON.stringify(polygons, null, 2));
 
-      const responses = await estimateCarbon(polygons);
+      // Process polygons one by one to ensure the backend processes all of them correctly
+      const responsePromises = polygons.map(polygon => estimateCarbon([polygon]));
+      const responseArrays = await Promise.all(responsePromises);
+      // Flatten the results into a single array of responses
+      const responses = responseArrays.flat();
 
       console.log('[ประมวลผล] 📥 Raw backend responses:', JSON.stringify(responses, null, 2));
 
