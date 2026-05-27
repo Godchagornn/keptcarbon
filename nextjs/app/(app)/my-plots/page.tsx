@@ -914,7 +914,7 @@ function ProjectCarbonSummary({ plots, isMobile }: { plots: SavedPlot[]; isMobil
       totalNow: (currentPt?.co2 ?? 0) + fallbackTotal,
       ciNow: currentPt?.ci ?? 0,
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [plots]);
 
   if (combinedPts.length === 0 && totalNow === 0) return null;
@@ -947,7 +947,7 @@ function ProjectCarbonSummary({ plots, isMobile }: { plots: SavedPlot[]; isMobil
       {/* chart — full width on desktop for better widescreen layout */}
       {combinedPts.length > 0 && (
         <div style={{ width: "100%" }}>
-          <CarbonBarChart pts={combinedPts} isMobile={isMobile} title="ปริมาณคาร์บอนกักเก็บ(tCO₂eq)" narrowMode={false} />
+          <CarbonBarChart pts={combinedPts} isMobile={isMobile} title="ปริมาณคาร์บอนกักเก็บ (tCO₂eq)" narrowMode={false} />
         </div>
       )}
     </div>
