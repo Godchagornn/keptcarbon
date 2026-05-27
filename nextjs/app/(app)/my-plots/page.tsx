@@ -1085,7 +1085,7 @@ function ProjectCarbonSummary({ plots, isMobile }: { plots: SavedPlot[]; isMobil
       {isExpanded && combinedPts.length > 0 && (
         <div style={{ marginTop: 20, paddingTop: 20, borderTop: "1px dashed #e2e8f0", display: "flex", justifyContent: "center" }}>
           <div style={{ width: "100%", maxWidth: 680, animation: "fadeIn 0.3s ease" }}>
-            <CarbonBarChart pts={combinedPts} isMobile={isMobile} narrowMode={!isMobile} showAge={showAggregateAge} title="ปริมาณคาร์บอนกักเก็บ (tCO₂eq)" />
+            <CarbonBarChart pts={combinedPts} isMobile={isMobile} narrowMode={!isMobile} showAge={false} title="ปริมาณคาร์บอนกักเก็บ (tCO₂eq)" />
           </div>
         </div>
       )}

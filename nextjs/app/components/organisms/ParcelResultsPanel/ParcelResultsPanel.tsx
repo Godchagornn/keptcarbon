@@ -2114,7 +2114,7 @@ export function ParcelResultsPanel({
 
                             {aggregatePts.length > 0 && (
                                 <div>
-                                    <CarbonBarChart pts={aggregatePts} isMobile={isMobile} narrowMode={!isMobile} showAge={showAggregateAge} />
+                                    <CarbonBarChart pts={aggregatePts} isMobile={isMobile} narrowMode={!isMobile} showAge={false} />
                                 </div>
                             )}
                         </div>

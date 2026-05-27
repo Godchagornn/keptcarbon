@@ -21,10 +21,19 @@ import { useSearchParams } from "next/navigation";
 
 type Tab = "draw" | "shp";
 
+const REGIONS_DATA = [
+  { name: "ภาคตะวันออกเฉียงเหนือ", provinces: ["บึงกาฬ"] },
+  { name: "ภาคตะวันออก", provinces: ["ระยอง"] },
+  { name: "ภาคใต้", provinces: ["สุราษฎร์ธานี"] }
+];
+
 const cursorAddNode = "url(\"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none'><circle cx='12' cy='12' r='6' fill='%23ffffff' stroke='%233b82f6' stroke-width='2.5'/><line x1='12' y1='8' x2='12' y2='16' stroke='%233b82f6' stroke-width='2' stroke-linecap='round'/><line x1='8' y1='12' x2='16' y2='12' stroke='%233b82f6' stroke-width='2' stroke-linecap='round'/></svg>\") 12 12, cell";
 
 function MapDrawContent() {
   const { user } = useAuth();
+
+  const [selectedRegion, setSelectedRegion] = useState("");
+  const [selectedProvince, setSelectedProvince] = useState("");
 
   // Toggle body class for full-screen layout
   useEffect(() => {
@@ -1582,7 +1591,7 @@ function MapDrawContent() {
     return () => document.removeEventListener("keydown", onKey);
   }, []);
 
-  const startDrawFlow = () => {
+  const startDrawFlow = async () => {
     const map = mapRef.current;
     if (!map) return;
     if (isMobile()) {
@@ -1594,7 +1603,20 @@ function MapDrawContent() {
     setDrawing(true);
     map.getCanvas().style.cursor = 'crosshair';
     setStatus("โหมดวาด — คลิกเพื่อเพิ่มจุด | คลิกขวา หรือ Double-click เพื่อปิดแปลง | Esc ยกเลิก");
-    if (map.getZoom() < 8) {
+
+    if (selectedProvince) {
+      setSearchLoading(true);
+      try {
+        const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&countrycodes=th&limit=1&q=${encodeURIComponent("จังหวัด" + selectedProvince)}`);
+        const data = await res.json();
+        if (data && data.length > 0) {
+          map.flyTo({ center: [parseFloat(data[0].lon), parseFloat(data[0].lat)], zoom: 10, pitch: 0, bearing: 0, duration: 2500 });
+        }
+      } catch (err) {
+        console.error(err);
+      }
+      setSearchLoading(false);
+    } else if (map.getZoom() < 8) {
       map.flyTo({ center: [101.258, 12.682], zoom: 10, pitch: 0, bearing: 0, duration: 2000 });
     }
   };
@@ -2434,6 +2456,58 @@ function MapDrawContent() {
                   </div>
                 )}
 
+                {/* Region / Province Selection */}
+                {!drawing && drawnParcels.length === 0 && (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 12, marginBottom: 16 }}>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                      <label style={{ fontSize: 13, fontWeight: 700, color: "#0f172a" }}>ภูมิภาค</label>
+                      <select
+                        className="prp-input"
+                        style={{
+                          padding: "10px 12px",
+                          borderRadius: 10,
+                          border: "1px solid #cbd5e1",
+                          fontSize: 14,
+                          background: "#fff"
+                        }}
+                        value={selectedRegion}
+                        onChange={(e) => {
+                          setSelectedRegion(e.target.value);
+                          setSelectedProvince("");
+                        }}
+                      >
+                        <option value="">-- เลือกภาค --</option>
+                        {REGIONS_DATA.map(r => (
+                          <option key={r.name} value={r.name}>{r.name}</option>
+                        ))}
+                      </select>
+                    </div>
+                    
+                    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                      <label style={{ fontSize: 13, fontWeight: 700, color: "#0f172a" }}>จังหวัดเป้าหมาย</label>
+                      <select
+                        className="prp-input"
+                        style={{
+                          padding: "10px 12px",
+                          borderRadius: 10,
+                          border: "1px solid #cbd5e1",
+                          fontSize: 14,
+                          background: selectedRegion ? "#fff" : "#f1f5f9",
+                          color: selectedRegion ? "#0f172a" : "#94a3b8"
+                        }}
+                        value={selectedProvince}
+                        onChange={(e) => setSelectedProvince(e.target.value)}
+                        disabled={!selectedRegion}
+                      >
+                        <option value="">-- เลือกจังหวัด --</option>
+                        {selectedRegion && REGIONS_DATA.find(r => r.name === selectedRegion)?.provinces.map(p => (
+                          <option key={p} value={p}>{p}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                )}
+
                 {/* Method selector */}
                 {!drawing && (
                   <div className="mds-method-toggle">
@@ -2510,6 +2584,57 @@ function MapDrawContent() {
                     ) : (
                       /* ── Default: show instructions + start button ── */
                       <>
+
+                        {drawnParcels.length === 0 && (
+                          <div style={{ display: "flex", flexDirection: "column", gap: 12, marginBottom: 16 }}>
+                            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                              <label style={{ fontSize: 13, fontWeight: 700, color: "#0f172a" }}>ภูมิภาค</label>
+                              <select
+                                className="prp-input"
+                                style={{
+                                  padding: "10px 12px",
+                                  borderRadius: 10,
+                                  border: "1px solid #cbd5e1",
+                                  fontSize: 14,
+                                  background: "#fff"
+                                }}
+                                value={selectedRegion}
+                                onChange={(e) => {
+                                  setSelectedRegion(e.target.value);
+                                  setSelectedProvince("");
+                                }}
+                              >
+                                <option value="">-- เลือกภาค --</option>
+                                {REGIONS_DATA.map(r => (
+                                  <option key={r.name} value={r.name}>{r.name}</option>
+                                ))}
+                              </select>
+                            </div>
+
+                            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                              <label style={{ fontSize: 13, fontWeight: 700, color: "#0f172a" }}>จังหวัดเป้าหมาย</label>
+                              <select
+                                className="prp-input"
+                                style={{
+                                  padding: "10px 12px",
+                                  borderRadius: 10,
+                                  border: "1px solid #cbd5e1",
+                                  fontSize: 14,
+                                  background: selectedRegion ? "#fff" : "#f1f5f9",
+                                  color: selectedRegion ? "#0f172a" : "#94a3b8"
+                                }}
+                                value={selectedProvince}
+                                onChange={(e) => setSelectedProvince(e.target.value)}
+                                disabled={!selectedRegion}
+                              >
+                                <option value="">-- เลือกจังหวัด --</option>
+                                {selectedRegion && REGIONS_DATA.find(r => r.name === selectedRegion)?.provinces.map(p => (
+                                  <option key={p} value={p}>{p}</option>
+                                ))}
+                              </select>
+                            </div>
+                          </div>
+                        )}
 
                         {drawnParcels.length === 0 && (
                           <ol className="mds-instr-list">
@@ -2814,6 +2939,14 @@ function MapDrawContent() {
               {user
                 ? "ต้องการที่จะเริ่มกำหนดขอบเขตและสร้างโครงการใหม่"
                 : "หากกลับไปข้อมูลที่ทำไว้จะหายไป"}
+              {user && (
+                <>
+                  <br />
+                  <span style={{ color: "#dc6926ff", fontWeight: 700, display: "block", marginTop: 8 }}>
+                    คำเตือน:ไม่ได้ทำการบันทึกข้อมูลแปลงที่วาดไว้ในระบบ
+                  </span>
+                </>
+              )}
             </p>
             <div style={{ display: "flex", gap: 12 }}>
               <button
