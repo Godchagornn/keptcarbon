@@ -383,15 +383,22 @@ function PlotDetailCard({
     }
     if (!displayYearBE && cr.plantYearBE > 0) displayYearBE = cr.plantYearBE;
 
-    const isVarietyFromUser = !!form?.variety;
-    const isSpacingFromUser = !!form?.spacing;
-    const isTreeCountFromUser = !!form?.treeCount;
+    const getSourceText = (source?: string | null, isFromUserFallback?: boolean) => {
+        if (!source) return isFromUserFallback ? "" : "(ประเมินโดยระบบ)";
+        if (source.includes("default")) return "(ค่าเริ่มต้น)";
+        if (source.includes("user input") || source.includes("user_input")) return "";
+        return "(ประเมินโดยระบบ)";
+    };
 
-    const variety = isVarietyFromUser ? form.variety : (ep?.rubber_clone.value ? String(ep.rubber_clone.value) : "");
-    const spacing = isSpacingFromUser ? form.spacing : (ep?.spacing_system.value ? String(ep.spacing_system.value).replace(/\s*\([^)]*\)/, "").trim() : "");
-    const treeCount = isTreeCountFromUser
-        ? (parseInt(form.treeCount) || 0)
-        : (ep?.tree_count.value && typeof ep.tree_count.value === "number" ? ep.tree_count.value : cr.trees);
+    const variety = ep?.rubber_clone?.value ? String(ep.rubber_clone.value) : (form?.variety || "");
+    const spacing = ep?.spacing_system?.value ? String(ep.spacing_system.value).replace(/\s*\([^)]*\)/, "").trim() : (form?.spacing || "");
+    const treeCount = (ep?.tree_count && typeof ep.tree_count.value === "number") 
+        ? ep.tree_count.value 
+        : (parseInt(form?.treeCount || "0") || cr.trees);
+
+    const varietyDesc = getSourceText(ep?.rubber_clone?.source, !!form?.variety);
+    const spacingDesc = getSourceText(ep?.spacing_system?.source, !!form?.spacing);
+    const treeCountDesc = getSourceText(ep?.tree_count?.source, !!form?.treeCount);
 
     return (
         <div style={{ display: "flex", flexDirection: "column", gap: 8, fontSize: 13, color: "#475569" }}>
@@ -515,9 +522,9 @@ function PlotDetailCard({
 
                 {/* Common params: variety, spacing, tree count */}
                 <div style={{ display: "flex", flexDirection: "column", gap: 3, marginTop: 8, paddingTop: 10, borderTop: "1px dashed rgba(16,185,129,0.2)" }}>
-                    {variety && <div>• พันธุ์ยาง: <strong style={{ color: "#0f172a" }}>{variety}</strong> {!isVarietyFromUser && <span style={{ color: "#64748b", fontSize: 12 }}>(ค่าเริ่มต้น)</span>}</div>}
-                    {spacing && <div>• ระยะปลูก: <strong style={{ color: "#0f172a" }}>{spacing}</strong> {!isSpacingFromUser && <span style={{ color: "#64748b", fontSize: 12 }}>(ค่าเริ่มต้น)</span>}</div>}
-                    {treeCount > 0 && <div>• จำนวนต้น: <strong style={{ color: "#0f172a" }}>{treeCount.toLocaleString("th-TH")}</strong> ต้น {!isTreeCountFromUser && <span style={{ color: "#64748b", fontSize: 12 }}>(ประเมินโดยระบบ)</span>}</div>}
+                    {variety && <div>• พันธุ์ยาง: <strong style={{ color: "#0f172a" }}>{variety}</strong> {varietyDesc && <span style={{ color: "#64748b", fontSize: 12 }}>{varietyDesc}</span>}</div>}
+                    {spacing && <div>• ระยะปลูก: <strong style={{ color: "#0f172a" }}>{spacing}</strong> {spacingDesc && <span style={{ color: "#64748b", fontSize: 12 }}>{spacingDesc}</span>}</div>}
+                    {treeCount > 0 && <div>• จำนวนต้น: <strong style={{ color: "#0f172a" }}>{treeCount.toLocaleString("th-TH")}</strong> ต้น {treeCountDesc && <span style={{ color: "#64748b", fontSize: 12 }}>{treeCountDesc}</span>}</div>}
                 </div>
             </div>
         </div>
