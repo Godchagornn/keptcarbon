@@ -51,6 +51,7 @@ type SavedPlot = {
   id: string;
   name: string;
   areaRai: number;
+  selectedAreaRai?: number;
   carbonTotal: number;
   rubberAge: number;
   plantYearBE?: number;
@@ -88,6 +89,11 @@ function PlotsMapView({ plots, isMobile }: { plots: SavedPlot[], isMobile: boole
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const legendRef = useRef<HTMLDivElement>(null);
+  const plotsRef = useRef(plots);
+
+  useEffect(() => {
+    plotsRef.current = plots;
+  }, [plots]);
 
   // Group plots by project name, assign colors
   const projectMap = useMemo(() => {
@@ -172,7 +178,7 @@ function PlotsMapView({ plots, isMobile }: { plots: SavedPlot[], isMobile: boole
           const props = {
             id: p.id,
             projectName: name,
-            area: p.areaRai.toFixed(2),
+            area: (p.selectedAreaRai || p.areaRai).toFixed(2),
             carbon: p.carbonTotal.toFixed(2),
             carbonPerTree: carbonPerTree ?? "—",
             province: p.province || "—",
@@ -331,7 +337,7 @@ function PlotsMapView({ plots, isMobile }: { plots: SavedPlot[], isMobile: boole
       const props = {
         id: p.id,
         projectName: name,
-        area: p.areaRai.toFixed(2),
+        area: (p.selectedAreaRai || p.areaRai).toFixed(2),
         carbon: p.carbonTotal.toFixed(2),
         carbonPerTree: carbonPerTree ?? "—",
         province: p.province || "—",
@@ -434,7 +440,7 @@ function EditPlotModal({ plot, index, onClose, onSave, isMobile }: { plot: Saved
     name: plot.name || "",
     ownerName: plot.ownerName || "",
     province: plot.province || "",
-    areaRai: plot.areaRai?.toString() || "",
+    areaRai: (plot.selectedAreaRai || plot.areaRai)?.toString() || "",
     plantStatus: form?.plantStatus || "",
     trees: isUserTrees && plot.trees ? plot.trees.toString() : "",
     plantYearBE: isUserYear && plot.plantYearBE ? plot.plantYearBE.toString() : "",
@@ -485,7 +491,7 @@ function EditPlotModal({ plot, index, onClose, onSave, isMobile }: { plot: Saved
       name: formData.name,
       ownerName: formData.ownerName,
       province: formData.province,
-      areaRai: parseFloat(formData.areaRai) || 0,
+      selectedAreaRai: parseFloat(formData.areaRai) || 0,
       rubberAge: ageNum,
       trees: treesNum,
       plantYearBE: effectivePlantYear,
@@ -682,6 +688,11 @@ function EditPlotModal({ plot, index, onClose, onSave, isMobile }: { plot: Saved
 function PlotMiniMap({ plot, isMobile, index }: { plot: SavedPlot; isMobile: boolean; index: number }) {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
+  const plotRef = useRef(plot);
+
+  useEffect(() => {
+    plotRef.current = plot;
+  }, [plot]);
 
   useEffect(() => {
     if (!mapContainerRef.current || mapRef.current) return;
@@ -700,6 +711,69 @@ function PlotMiniMap({ plot, isMobile, index }: { plot: SavedPlot; isMobile: boo
       attributionControl: false,
     });
     mapRef.current = map;
+
+    class MiniCenterControl {
+      _map?: maplibregl.Map;
+      _container?: HTMLDivElement;
+      onAdd(m: maplibregl.Map) {
+        this._map = m;
+        this._container = document.createElement("div");
+        this._container.className = "maplibregl-ctrl maplibregl-ctrl-group";
+
+        // Force explicit styles to perfectly match MapLibre's default white rounded buttons
+        this._container.style.backgroundColor = "#ffffff";
+        this._container.style.borderRadius = "8px"; // Matches the rounded look in the screenshot
+        this._container.style.boxShadow = "0 0 0 2px rgba(0,0,0,0.1)";
+        this._container.style.overflow = "hidden";
+
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.title = "กลับไปที่แปลง";
+        btn.style.width = "29px";
+        btn.style.height = "29px";
+        btn.style.padding = "0";
+        btn.style.margin = "0";
+        btn.style.border = "none";
+        btn.style.backgroundColor = "transparent";
+        btn.style.cursor = "pointer";
+        btn.style.display = "flex";
+        btn.style.alignItems = "center";
+        btn.style.justifyContent = "center";
+        btn.style.outline = "none";
+        btn.innerHTML = `<i class="bi bi-crosshair" style="font-size: 15px; color: #475569;"></i>`;
+        btn.onclick = () => {
+          if (!this._map) return;
+          const bounds = new maplibregl.LngLatBounds();
+          const currentPlot = plotRef.current;
+
+          const processCoords = (coords: any) => {
+            if (typeof coords[0] === "number") bounds.extend(coords as [number, number]);
+            else if (Array.isArray(coords)) coords.forEach(processCoords);
+          };
+
+          const luPolygons = currentPlot.backendData?.lu_polygon as GeoJSON.Feature[];
+          if (luPolygons && luPolygons.length > 0) {
+            luPolygons.forEach(f => {
+              if (f.geometry) processCoords((f.geometry as any).coordinates);
+            });
+          } else if (currentPlot.geojson) {
+            processCoords((currentPlot.geojson as any).coordinates);
+          }
+
+          if (!bounds.isEmpty()) {
+            this._map.fitBounds(bounds, { padding: isMobile ? 30 : 40, duration: 800 });
+          }
+        };
+        this._container.appendChild(btn);
+        return this._container;
+      }
+      onRemove() {
+        if (this._container?.parentNode) this._container.parentNode.removeChild(this._container);
+        this._map = undefined;
+      }
+    }
+
+    map.addControl(new MiniCenterControl(), "bottom-right");
     map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "bottom-right");
 
     map.on("load", () => {
@@ -879,8 +953,9 @@ function ProjectCarbonSummary({ plots, isMobile }: { plots: SavedPlot[]; isMobil
   const currentYearBE = new Date().getFullYear() + 543;
 
   const { combinedPts, totalNow, ciNow } = useMemo(() => {
-    const sumMap = new Map<number, { co2: number; ci: number; age: number }>();
+    const sumMap = new Map<number, { co2: number; sumLinearCi: number; age: number; count: number }>();
     let fallbackTotal = 0;
+    let fallbackLinearCi = 0;
 
     for (const plot of plots) {
       const isProcessed = plot.processed === true || (plot.carbonProfile && plot.carbonProfile.length > 0) || (plot.carbonTotal > 0);
@@ -897,32 +972,47 @@ function ProjectCarbonSummary({ plots, isMobile }: { plots: SavedPlot[]; isMobil
       } else if (effectiveAge > 0 && (plot.trees ?? 0) > 0) {
         pts = buildBarPoints(effectiveAge, chartStartYearBE, plot.trees ?? 0, plot.spacing || "2.5x8");
       } else {
-        if (plot.carbonTotal > 0) fallbackTotal += plot.carbonTotal;
+        if (plot.carbonTotal > 0) fallbackTotal += Math.floor(plot.carbonTotal);
+        // Approximation if CI is not available for fallback
+        const approxCi = (plot.carbonTotal || 0) * 0.05;
+        fallbackLinearCi += Math.floor(approxCi * 10) / 10;
         continue;
       }
 
       for (const p of pts) {
-        const e = sumMap.get(p.yearBE) ?? { co2: 0, ci: 0, age: 0 };
-        e.co2 += p.co2;
-        e.ci += p.ci;
-        e.age = Math.max(e.age, p.age);
+        const e = sumMap.get(p.yearBE) ?? { co2: 0, sumLinearCi: 0, age: 0, count: 0 };
+        e.co2 += Math.floor(p.co2 || 0);
+        // Avoid floating point precision issues by multiplying by 10 and rounding
+        e.sumLinearCi = Math.round((e.sumLinearCi + Math.floor((p.ci || 0) * 10) / 10) * 10) / 10;
+        e.age += p.age;
+        e.count += 1;
         sumMap.set(p.yearBE, e);
       }
     }
 
     const sorted = Array.from(sumMap.entries()).sort((a, b) => a[0] - b[0]);
-    const combinedPts: BarPoint[] = sorted.map(([yearBE, d], i) => ({
-      age: d.age, yearBE, year_at: i,
-      co2: d.co2, ci: d.ci,
-      gainValue: i > 0 ? d.co2 - sorted[i - 1][1].co2 : 0,
-      gainCi: 0, cycle: Math.floor(i / 7), cycleAge: d.age, errorMargin: d.ci,
+    // Truncate to the length where ALL active plots have data to avoid drops
+    // Find the max count of plots that exist in the first year (currentYearBE)
+    const currentPtData = sumMap.get(currentYearBE);
+    const expectedPlotCount = currentPtData ? currentPtData.count : 0;
+
+    // Filter out trailing years where some plots dropped off, to prevent chart dropping
+    const validSorted = expectedPlotCount > 0
+      ? sorted.filter(([yearBE, d]) => yearBE <= currentYearBE || d.count === expectedPlotCount)
+      : sorted;
+
+    const combinedPts: BarPoint[] = validSorted.map(([yearBE, d], i) => ({
+      age: Math.round(d.age / d.count), yearBE, year_at: i,
+      co2: d.co2, ci: d.sumLinearCi,
+      gainValue: i > 0 ? d.co2 - validSorted[i - 1][1].co2 : 0,
+      gainCi: 0, cycle: Math.floor(i / 7), cycleAge: Math.round(d.age / d.count), errorMargin: d.sumLinearCi,
     }));
 
     const currentPt = combinedPts.find(p => p.yearBE === currentYearBE);
     return {
       combinedPts,
       totalNow: (currentPt?.co2 ?? 0) + fallbackTotal,
-      ciNow: currentPt?.ci ?? 0,
+      ciNow: currentPt ? currentPt.ci : fallbackLinearCi,
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [plots]);
@@ -931,46 +1021,47 @@ function ProjectCarbonSummary({ plots, isMobile }: { plots: SavedPlot[]; isMobil
 
   return (
     <div style={{
-      background: "linear-gradient(135deg,rgba(16,185,129,0.06),rgba(5,150,105,0.02))",
-      borderRadius: 16, border: "1px solid rgba(16,185,129,0.18)",
-      padding: isMobile ? "14px 12px" : "16px 20px",
-      marginBottom: 4,
+      background: "#fff",
+      borderRadius: 16, border: "1px solid #e2e8f0",
+      padding: isMobile ? "16px" : "20px",
+      marginBottom: 20,
+      boxShadow: "0 4px 12px rgba(0,0,0,0.02)"
     }}>
-      {/* summary number row */}
+      {/* Top Summary Box (Clickable for toggle) */}
       <div
         onClick={() => combinedPts.length > 0 && setIsExpanded(!isExpanded)}
         style={{
-          textAlign: "center",
-          marginBottom: (isExpanded && combinedPts.length > 0) ? 10 : 0,
+          background: "linear-gradient(to right, rgba(13,148,136,0.08), rgba(20,184,166,0.03))",
+          border: "1px solid rgba(13,148,136,0.2)",
+          borderRadius: 12,
+          padding: "16px",
+          display: "flex",
+          flexDirection: "column",
+          justifyContent: "center",
+          alignItems: "center",
           position: "relative",
-          cursor: combinedPts.length > 0 ? "pointer" : "default"
+          cursor: combinedPts.length > 0 ? "pointer" : "default",
+          marginBottom: (isExpanded && combinedPts.length > 0) ? 16 : 0,
+          transition: "margin-bottom 0.2s ease"
         }}
       >
         {combinedPts.length > 0 && (
-          <div style={{ position: "absolute", right: 0, top: "50%", transform: "translateY(-50%)" }}>
-            <i className={`bi bi-chevron-${isExpanded ? 'up' : 'down'}`} style={{ color: "#059669", fontSize: 16 }} />
+          <div style={{ position: "absolute", right: 16, top: "50%", transform: "translateY(-50%)" }}>
+            <i className={`bi bi-chevron-${isExpanded ? 'up' : 'down'}`} style={{ color: "#0f766e", fontSize: 18 }} />
           </div>
         )}
-        <div style={{ fontSize: isMobile ? 11 : 12, color: "#059669", fontWeight: 600, marginBottom: 4, display: "flex", alignItems: "center", justifyContent: "center", gap: 5 }}>
-          <i className="bi bi-cloud-fill" />
-          ปริมาณคาร์บอนเครดิตรวม ณ ปีปัจจุบัน
+        <div style={{ fontSize: 13, color: "#0f766e", fontWeight: 700, marginBottom: 6, display: "flex", alignItems: "center", gap: 6 }}>
+          <i className="bi bi-cloud-arrow-down-fill" /> ปริมาณคาร์บอนสะสมรวม ณ ปีปัจจุบัน
         </div>
-        <div style={{ display: "flex", alignItems: "baseline", justifyContent: "center", gap: 5, flexWrap: "wrap" }}>
-          <span style={{ fontSize: isMobile ? 24 : 28, fontWeight: 900, color: "#064e3b", lineHeight: 1 }}>
-            {Math.floor(totalNow).toLocaleString("th-TH")}
-          </span>
-          {ciNow > 0 && (
-            <span style={{ fontSize: isMobile ? 13 : 15, fontWeight: 600, color: "#6b7280" }}>
-              ± {(Math.floor(ciNow * 10) / 10).toLocaleString("th-TH", { minimumFractionDigits: 1, maximumFractionDigits: 1 })}
-            </span>
-          )}
-          <span style={{ fontSize: isMobile ? 12 : 14, fontWeight: 700, color: "#0d9488" }}>tCO₂eq</span>
+        <div style={{ fontWeight: 800, color: "#0d9488", fontSize: isMobile ? 24 : 28, lineHeight: 1.1 }}>
+          {Math.floor(totalNow).toLocaleString("th-TH")} <span style={{ fontSize: isMobile ? 18 : 20, color: "#0f766e" }}>± {(Math.floor(ciNow * 10) / 10).toLocaleString("th-TH", { minimumFractionDigits: 1, maximumFractionDigits: 1 })}</span> <span style={{ fontSize: 16, fontWeight: 600, opacity: 0.8 }}>tCO₂eq</span>
         </div>
       </div>
-      {/* chart — full width on desktop for better widescreen layout */}
+
+      {/* Chart Section - mimics Step 3 total layout exactly */}
       {isExpanded && combinedPts.length > 0 && (
-        <div style={{ width: "100%" }}>
-          <CarbonBarChart pts={combinedPts} isMobile={isMobile} title="ปริมาณคาร์บอนกักเก็บ (tCO₂eq)" narrowMode={false} />
+        <div style={{ animation: "fadeIn 0.3s ease" }}>
+          <CarbonBarChart pts={combinedPts} isMobile={isMobile} narrowMode={!isMobile} showAge={false} title="ปริมาณคาร์บอนกักเก็บ (tCO₂eq)" />
         </div>
       )}
     </div>
@@ -980,6 +1071,8 @@ function ProjectCarbonSummary({ plots, isMobile }: { plots: SavedPlot[]; isMobil
 function PlotCard({ plot, index, onDelete, onEdit, expanded, onToggle, isMobile }: { plot: SavedPlot; index: number; onDelete: () => void; onEdit?: (p: SavedPlot, i: number) => void; expanded: boolean; onToggle: () => void; isMobile: boolean }) {
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [activeTab, setActiveTab] = useState<"map" | "carbon">("map");
+  const [expandYears, setExpandYears] = useState(false);
+  const [expandNotes, setExpandNotes] = useState(false);
 
   // Determine if this plot has been carbon-processed
   // Compatible with old data: if `processed` flag is missing, infer from carbonProfile or carbonTotal
@@ -1017,9 +1110,9 @@ function PlotCard({ plot, index, onDelete, onEdit, expanded, onToggle, isMobile 
   const ep = backendData.ep;
 
   const userEnteredYear = !!form?.plantYear;
-  const showPlotAge = plot.backendData ? userEnteredYear : true;
+  const showPlotAge = !!form?.plantYear || (plot.carbonProfile?.some(p => p.age !== null) ?? false);
   const yearParam = ep?.year_of_planting;
-  const rawNotes: string[] = yearParam?.note ?? [];
+  const rawNotes: string[] = yearParam?.notes ?? yearParam?.note ?? [];
   const yearNotes = rawNotes.slice(0, 5);
 
   let yearBoxItems: Array<{ label: string; pct: number, yearBE: number }> = [];
@@ -1049,11 +1142,22 @@ function PlotCard({ plot, index, onDelete, onEdit, expanded, onToggle, isMobile 
   const isSpacingFromUser = !!form?.spacing;
   const isTreeCountFromUser = !!form?.treeCount;
 
-  const displayVariety = isVarietyFromUser ? form.variety : (ep?.rubber_clone?.value ? String(ep.rubber_clone.value) : (plot.variety || ""));
-  const displaySpacing = isSpacingFromUser ? form.spacing : (ep?.spacing_system?.value ? String(ep.spacing_system.value).replace(/\s*\([^)]*\)/, "").trim() : (plot.spacing || ""));
-  const displayTreeCount = isTreeCountFromUser
-    ? (parseInt(form?.treeCount || "0") || 0)
-    : (ep?.tree_count?.value && typeof ep.tree_count.value === "number" ? ep.tree_count.value : (plot.trees || 0));
+  const getSourceText = (source?: string | null, isFromUserFallback?: boolean) => {
+    if (!source) return isFromUserFallback ? "" : "(ประเมินโดยระบบ)";
+    if (source.includes("default")) return "(ค่าเริ่มต้น)";
+    if (source.includes("user input") || source.includes("user_input")) return "";
+    return "(ประเมินโดยระบบ)";
+  };
+
+  const displayVariety = ep?.rubber_clone?.value ? String(ep.rubber_clone.value) : (form?.variety || plot.variety || "");
+  const displaySpacing = ep?.spacing_system?.value ? String(ep.spacing_system.value).replace(/\s*\([^)]*\)/, "").trim() : (form?.spacing || plot.spacing || "");
+  const displayTreeCount = (ep?.tree_count && typeof ep.tree_count.value === "number")
+    ? ep.tree_count.value
+    : (parseInt(form?.treeCount || "0") || plot.trees || 0);
+
+  const varietyDesc = getSourceText(ep?.rubber_clone?.source, !!form?.variety);
+  const spacingDesc = getSourceText(ep?.spacing_system?.source, !!form?.spacing);
+  const treeCountDesc = getSourceText(ep?.tree_count?.source, !!form?.treeCount);
 
   const convertYearNoteToBE = (note: string) => note.replace(/^(\d{4})/, (_, y) => String(parseInt(y) + 543));
 
@@ -1290,25 +1394,19 @@ function PlotCard({ plot, index, onDelete, onEdit, expanded, onToggle, isMobile 
                     <span style={{ fontWeight: 700, color: "#047857", display: "flex", alignItems: "center", gap: 6, fontSize: 14 }}>
                       <i className="bi bi-layers-fill" /> ข้อมูลที่ใช้ในการประมวลผล
                     </span>
+                    {(plot.selectedAreaRai || plot.areaRai) > 0 && (
+                      <div style={{ fontSize: 12, color: "#475569", fontWeight: 600 }}>
+                        พื้นที่ที่เลือก: <strong style={{ color: "#0f172a" }}>{(plot.selectedAreaRai || plot.areaRai).toFixed(2)}</strong> ไร่
+                      </div>
+                    )}
                   </div>
 
                   {/* Main Year Info (from user or value) */}
                   <div style={{ marginBottom: yearNotes.length > 0 ? 12 : 0 }}>
-                    <div style={{ fontSize: 12, color: "#475569", fontWeight: 700, marginBottom: 6 }}>
-                      ปีที่เริ่มปลูกที่ใช้ในการคำนวณ {(!userEnteredYear && yearBoxItems.length > 0) ? `(${yearBoxItems.length} ปี):` : ":"}
-                    </div>
-                    <div style={{
-                      display: "flex", alignItems: "flex-start", gap: 6,
-                      fontSize: 11, color: "#059669", fontWeight: 600,
-                      background: "rgba(16,185,129,0.1)", padding: "6px 8px",
-                      borderRadius: 6, border: "1px dashed rgba(16,185,129,0.2)", width: "fit-content", lineHeight: 1.3,
-                      marginBottom: 8
-                    }}>
-                      <i className="bi bi-info-circle-fill" style={{ marginTop: 1, flexShrink: 0 }} />
-                      <span>
-                        {userEnteredYear
-                          ? "ข้อมูลที่ผู้ใช้ระบุ"
-                          : "ข้อมูลอ้างอิงจากระบบ"}
+                    <div style={{ fontSize: 12, color: "#475569", fontWeight: 700, marginBottom: 8 }}>
+                      ปีที่เริ่มปลูกที่ใช้ในการคำนวณ {userEnteredYear ? "(1 ปี)" : (yearBoxItems.length > 0 ? `(${yearBoxItems.length} ปี)` : "")} :{" "}
+                      <span style={{ color: "#059669", fontWeight: 600, marginLeft: 4 }}>
+                        {userEnteredYear ? "ข้อมูลที่ผู้ใช้ระบุ" : "ข้อมูลอ้างอิงจากระบบ"}
                       </span>
                     </div>
                     <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
@@ -1326,7 +1424,7 @@ function PlotCard({ plot, index, onDelete, onEdit, expanded, onToggle, isMobile 
                         </div>
                       ) : yearBoxItems.length > 0 ? (
                         <>
-                          {yearBoxItems.slice(0, 3).map((box, bi) => (
+                          {yearBoxItems.slice(0, expandYears ? yearBoxItems.length : 3).map((box, bi) => (
                             <div key={bi} style={{
                               padding: "4px 10px",
                               background: "rgba(100,116,139,0.06)",
@@ -1336,11 +1434,25 @@ function PlotCard({ plot, index, onDelete, onEdit, expanded, onToggle, isMobile 
                               fontSize: 12,
                               color: "#475569",
                             }}>
-                              {box.label}{box.pct > 0 ? ` (${box.pct}%)` : ""}
+                              {box.label.replace(/พ\.ศ\.\s*/g, '')}{box.pct > 0 ? ` (${box.pct}%)` : ""}
                             </div>
                           ))}
                           {yearBoxItems.length > 3 && (
-                            <span style={{ fontSize: 14, color: "#94a3b8", fontWeight: 600 }}>...</span>
+                            <button
+                              onClick={() => setExpandYears(!expandYears)}
+                              style={{
+                                border: "1px solid rgba(100,116,139,0.2)",
+                                background: expandYears ? "rgba(226,232,240,0.8)" : "rgba(241,245,249,0.8)",
+                                borderRadius: "50%",
+                                width: 24, height: 24,
+                                display: "flex", alignItems: "center", justifyContent: "center",
+                                cursor: "pointer",
+                                color: "#475569"
+                              }}
+                              title={expandYears ? "แสดงน้อยลง" : "แสดงทั้งหมด"}
+                            >
+                              <i className={`bi bi-${expandYears ? "dash" : "plus"}`} style={{ fontSize: 14, fontWeight: 800 }} />
+                            </button>
                           )}
                         </>
                       ) : (
@@ -1356,8 +1468,9 @@ function PlotCard({ plot, index, onDelete, onEdit, expanded, onToggle, isMobile 
                         <i className="bi bi-pie-chart-fill" style={{ color: "#059669" }} /> สัดส่วนปีที่เริ่มปลูกที่ตรวจพบในแปลง:
                       </div>
                       <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
-                        {yearNotes.slice(0, 3).map((note, ni) => {
+                        {yearNotes.slice(0, expandNotes ? yearNotes.length : 3).map((note, ni) => {
                           const beNote = convertYearNoteToBE(note);
+                          const displayNote = beNote;
                           return (
                             <div key={ni} style={{
                               padding: "4px 8px",
@@ -1368,23 +1481,37 @@ function PlotCard({ plot, index, onDelete, onEdit, expanded, onToggle, isMobile 
                               fontSize: 11,
                               color: "#475569",
                             }}>
-                              {beNote}
+                              {displayNote.replace(/พ\.ศ\.\s*/g, '')}
                             </div>
                           );
                         })}
                         {yearNotes.length > 3 && (
-                          <span style={{ fontSize: 12, color: "#64748b", fontWeight: 700 }}>...</span>
+                          <button
+                            onClick={() => setExpandNotes(!expandNotes)}
+                            style={{
+                              border: "1px solid rgba(100,116,139,0.2)",
+                              background: expandNotes ? "rgba(226,232,240,0.8)" : "rgba(241,245,249,0.8)",
+                              borderRadius: "50%",
+                              width: 22, height: 22,
+                              display: "flex", alignItems: "center", justifyContent: "center",
+                              cursor: "pointer",
+                              color: "#475569"
+                            }}
+                            title={expandNotes ? "แสดงน้อยลง" : "แสดงทั้งหมด"}
+                          >
+                            <i className={`bi bi-${expandNotes ? "dash" : "plus"}`} style={{ fontSize: 12, fontWeight: 800 }} />
+                          </button>
                         )}
                       </div>
                     </div>
                   )}
-                </div>
 
-                {/* Common params: variety, spacing, tree count */}
-                <div style={{ display: "flex", flexDirection: "column", gap: 3, marginTop: 2 }}>
-                  {displayVariety && <div>• พันธุ์ยาง: <strong style={{ color: "#0f172a" }}>{displayVariety}</strong> {!isVarietyFromUser && <span style={{ color: "#64748b", fontSize: 12 }}>(ค่าเริ่มต้น)</span>}</div>}
-                  {displaySpacing && <div>• ระยะปลูก: <strong style={{ color: "#0f172a" }}>{displaySpacing}</strong> {!isSpacingFromUser && <span style={{ color: "#64748b", fontSize: 12 }}>(ค่าเริ่มต้น)</span>}</div>}
-                  {displayTreeCount > 0 && <div>• จำนวนต้น: <strong style={{ color: "#0f172a" }}>{displayTreeCount.toLocaleString("th-TH")}</strong> ต้น {!isTreeCountFromUser && <span style={{ color: "#64748b", fontSize: 12 }}>(ประเมินโดยระบบ)</span>}</div>}
+                  {/* Common params: variety, spacing, tree count */}
+                  <div style={{ display: "flex", flexDirection: "column", gap: 3, marginTop: 8, paddingTop: 10, borderTop: "1px dashed rgba(16,185,129,0.2)" }}>
+                    {displayVariety && <div>• พันธุ์ยาง: <strong style={{ color: "#0f172a" }}>{displayVariety}</strong> {varietyDesc && <span style={{ color: "#64748b", fontSize: 12 }}>{varietyDesc}</span>}</div>}
+                    {displaySpacing && <div>• ระยะปลูก: <strong style={{ color: "#0f172a" }}>{displaySpacing}</strong> {spacingDesc && <span style={{ color: "#64748b", fontSize: 12 }}>{spacingDesc}</span>}</div>}
+                    {displayTreeCount > 0 && <div>• จำนวนต้น: <strong style={{ color: "#0f172a" }}>{displayTreeCount.toLocaleString("th-TH")}</strong> ต้น {treeCountDesc && <span style={{ color: "#64748b", fontSize: 12 }}>{treeCountDesc}</span>}</div>}
+                  </div>
                 </div>
               </div>
             </div>
@@ -1498,14 +1625,12 @@ export default function MyPlotsPage() {
           geom = plot.boundaryGeojson as GeoJSON.Geometry;
         }
 
-        const backendYearBE = plot.backendData?.plantYearBE || 0;
-        const userYearBE = plot.plantYearBE || 0;
-        const finalPlantYearBE = userYearBE > 0 ? userYearBE : (backendYearBE > 0 ? backendYearBE : 0);
+        const userYearBE = plot.backendData?.form?.plantYear ? parseInt(plot.backendData.form.plantYear) : 0;
 
         return {
           id: plot.id,
           geometry: geom,
-          year_of_planting: finalPlantYearBE > 0 ? finalPlantYearBE - 543 : null,
+          year_of_planting: userYearBE > 0 ? userYearBE - 543 : null,
           rubber_clone: plot.variety || null,
           tree_count: plot.trees || null,
           spacing_system: plot.spacing || null,
@@ -1530,12 +1655,38 @@ export default function MyPlotsPage() {
         const epPlantYearCE = typeof ep?.year_of_planting?.value === "number" ? ep.year_of_planting.value : 0;
         const epPlantYearBE = epPlantYearCE > 0 ? epPlantYearCE + 543 : 0;
         const epTrees = typeof ep?.tree_count?.value === "number" ? ep.tree_count.value : 0;
+        const epVariety = typeof ep?.rubber_clone?.value === "string" ? ep.rubber_clone.value : "";
+        const epSpacingRaw = typeof ep?.spacing_system?.value === "string" ? ep.spacing_system.value : "";
+        const epSpacing = epSpacingRaw.replace(/\s*\([^)]*\)/, "").trim();
 
+        // Calculate selected area based on saved LU features
+        const luFeatures = plot.backendData?.lu_polygon || [];
+        const luChecked = plot.luChecked || { A: true, A302: true };
+        const luAreaRai = luFeatures.reduce((acc: number, feat: any) => {
+          const code = feat.properties?.LU_CODE || feat.properties?.lu_code || "";
+          const P = code.charAt(0).toUpperCase();
+          if (luChecked[code] || luChecked[P]) {
+            return acc + (feat.properties?.areaRai || 0);
+          }
+          return acc;
+        }, 0);
+        const selectedAreaRai = luAreaRai > 0 ? luAreaRai : plot.areaRai;
+
+        const formVariety = plot.backendData?.form?.variety || "";
+        const formSpacing = plot.backendData?.form?.spacing || "";
+        const formTrees = plot.backendData?.form?.treeCount ? parseInt(plot.backendData.form.treeCount) : 0;
         const userPlantYear = plot.plantYearBE || 0;
-        const userTrees = plot.trees || 0;
+
+        const variety = formVariety || plot.variety || epVariety;
+        const spacing = formSpacing || plot.spacing || epSpacing;
+
+        const currentSpacing = spacing || "2.5x8";
+        const density = currentSpacing === "2.5x7" ? 91 : (currentSpacing === "3x7" ? 76 : (currentSpacing === "3x8" ? 66 : 80));
+
+        let crTrees = formTrees > 0 ? formTrees : Math.round(selectedAreaRai * density);
+        if (crTrees <= 0 && epTrees > 0) crTrees = epTrees;
 
         const age = userPlantYear > 0 ? (CURRENT_BE_NOW - userPlantYear) : (epPlantYearBE > 0 ? (CURRENT_BE_NOW - epPlantYearBE) : 0);
-        const trees = userTrees > 0 ? userTrees : (epTrees > 0 ? epTrees : 0);
         const finalPlantYear = userPlantYear > 0 ? userPlantYear : epPlantYearBE;
 
         const rawProfile = resp.carbon_profile ?? [];
@@ -1548,7 +1699,10 @@ export default function MyPlotsPage() {
           carbonTotal: co2Now,
           rubberAge: age,
           plantYearBE: finalPlantYear,
-          trees,
+          trees: crTrees,
+          variety,
+          spacing,
+          selectedAreaRai,
           carbonProfile,
           backendData: {
             ...plot.backendData,
@@ -1724,7 +1878,7 @@ export default function MyPlotsPage() {
                   </button>
                 </div>
               )}
-              <Link
+              <a
                 href="/map-draw"
                 style={{
                   display: "inline-flex", alignItems: "center", justifyContent: "center", gap: isMobile ? 8 : 10, background: "linear-gradient(135deg,#10b981 0%,#059669 100%)", color: "#fff", padding: isMobile ? "12px 24px" : "14px 28px", borderRadius: isMobile ? 12 : 14, fontWeight: 700, fontSize: isMobile ? 15 : 17, textDecoration: "none", boxShadow: isMobile ? "0 6px 15px rgba(16,185,129,0.25)" : "0 10px 25px rgba(16,185,129,0.3)",
@@ -1734,7 +1888,7 @@ export default function MyPlotsPage() {
                 }}
               >
                 <i className="bi bi-plus-circle" style={{ fontSize: isMobile ? 16 : 18 }} /> เริ่มโครงการใหม่
-              </Link>
+              </a>
             </div>
           </div>
         </div>

@@ -280,11 +280,11 @@ function aggregateProfiles(responses: EstimationResponse[], fallbackBaseAge: num
 
     const yearMap = new Map<number, {
         totalCo2: number;
-        sumSqCI: number;
+        sumLinearCI: number;
         totalAge: number;
         validAgeCount: number;
         totalGain: number;
-        sumSqGainCI: number;
+        sumLinearGainCI: number;
         plotCount: number;
     }>();
 
@@ -294,18 +294,18 @@ function aggregateProfiles(responses: EstimationResponse[], fallbackBaseAge: num
             const year = item.year;
             if (!yearMap.has(year)) {
                 yearMap.set(year, {
-                    totalCo2: 0, sumSqCI: 0, totalAge: 0, validAgeCount: 0, totalGain: 0, sumSqGainCI: 0, plotCount: 0
+                    totalCo2: 0, sumLinearCI: 0, totalAge: 0, validAgeCount: 0, totalGain: 0, sumLinearGainCI: 0, plotCount: 0
                 });
             }
             const data = yearMap.get(year)!;
-            data.totalCo2 += Math.floor(item.stocks.value);
-            data.sumSqCI += item.stocks.ci * item.stocks.ci;
+            data.totalCo2 += Math.floor(item.stocks.value || 0);
+            data.sumLinearCI = Math.round((data.sumLinearCI + Math.floor((item.stocks.ci || 0) * 10) / 10) * 10) / 10;
             if (item.age != null && !isNaN(item.age)) {
                 data.totalAge += item.age;
                 data.validAgeCount++;
             }
-            data.totalGain += Math.floor(item.gain.value);
-            data.sumSqGainCI += item.gain.ci * item.gain.ci;
+            data.totalGain += Math.floor(item.gain.value || 0);
+            data.sumLinearGainCI = Math.round((data.sumLinearGainCI + Math.floor((item.gain.ci || 0) * 10) / 10) * 10) / 10;
             data.plotCount++;
         });
     });
@@ -316,8 +316,8 @@ function aggregateProfiles(responses: EstimationResponse[], fallbackBaseAge: num
     const pts: BarPoint[] = sortedYears.map((year, j) => {
         const data = yearMap.get(year)!;
         const avgAge = data.validAgeCount > 0 ? Math.round(data.totalAge / data.validAgeCount) : fallbackBaseAge + j;
-        const totalCI = Math.sqrt(data.sumSqCI);
-        const totalGainCI = Math.sqrt(data.sumSqGainCI);
+        const totalCI = data.sumLinearCI;
+        const totalGainCI = data.sumLinearGainCI;
 
         return {
             age: avgAge,
@@ -410,7 +410,7 @@ function PlotDetailCard({
                     </span>
                     {areaRai !== undefined && (
                         <div style={{ fontSize: 12, color: "#475569", fontWeight: 600 }}>
-                            พื้นที่: <strong style={{ color: "#0f172a" }}>{areaRai.toFixed(2)}</strong> ไร่
+                            พื้นที่ที่เลือก: <strong style={{ color: "#0f172a" }}>{areaRai.toFixed(2)}</strong> ไร่
                         </div>
                     )}
                 </div>
@@ -418,7 +418,7 @@ function PlotDetailCard({
                 {/* Main Year Info (from user or value) */}
                 <div style={{ marginBottom: yearNotes.length > 0 ? 12 : 0 }}>
                     <div style={{ fontSize: 12, color: "#475569", fontWeight: 700, marginBottom: 8 }}>
-                        ปีที่เริ่มปลูกที่ใช้ในการคำนวณ {(!userEnteredYear && yearBoxItems.length > 0) ? `(${yearBoxItems.length} ปี)` : ""} :{" "}
+                        ปีที่เริ่มปลูกที่ใช้ในการคำนวณ {userEnteredYear ? "(1 ปี)" : (yearBoxItems.length > 0 ? `(${yearBoxItems.length} ปี)` : "")} :{" "}
                         <span style={{ color: "#059669", fontWeight: 600, marginLeft: 4 }}>
                             {userEnteredYear ? "ข้อมูลที่ผู้ใช้ระบุ" : "ข้อมูลอ้างอิงจากระบบ"}
                         </span>
@@ -1265,6 +1265,7 @@ export function ParcelResultsPanel({
                     userId: user.id,
                     name: projectName || props.farm_name || "แปลงยางใหม่",
                     areaRai: p.areaRai,
+                    selectedAreaRai: hasNewResult ? cr.selectedAreaRai : (props.selectedAreaRai || p.areaRai),
                     carbonTotal: co2,
                     rubberAge: age,
                     plantYearBE: finalPlantYear,
@@ -1964,30 +1965,30 @@ export function ParcelResultsPanel({
             const N = plotStates.length;
             for (let i = 0; i < 35; i++) {
                 const yearBE = CURRENT_BE + i;
-                let totalCo2 = 0, totalContinuousAge = 0, sumSqMargin = 0;
+                let totalCo2 = 0, totalContinuousAge = 0, sumLinearMargin = 0;
                 plotStates.forEach((state, idx) => {
                     const plotCo2 = carbonCo2(state.continuousAge, carbonResults[idx].trees, carbonResults[idx].spacing);
                     totalCo2 += Math.floor(plotCo2);
                     if (i > 0) {
                         const growth = plotCo2 - initialPlotCarbons[idx];
                         const factor = 0.05 + 0.002 * i;
-                        sumSqMargin += Math.max(0, growth * factor) ** 2;
+                        sumLinearMargin = Math.round((sumLinearMargin + Math.floor(Math.max(0, growth * factor) * 10) / 10) * 10) / 10;
                     }
                     totalContinuousAge += state.continuousAge;
                     state.continuousAge++;
                 });
                 const avgAge = Math.round(totalContinuousAge / N);
-                const errorMargin = Math.sqrt(sumSqMargin);
+                const errorMargin = sumLinearMargin;
                 aggregatePts.push({ age: avgAge, yearBE, year_at: i, co2: totalCo2, ci: errorMargin, gainValue: 0, gainCi: 0, cycle: Math.floor(i / 7), cycleAge: avgAge, errorMargin });
             }
         }
 
         const summaryTotalCo2 = aggregatePts.length > 0
             ? aggregatePts[0].co2
-            : carbonResults.reduce((sum, c) => sum + c.co2Now, 0);
+            : carbonResults.reduce((sum, c) => sum + Math.floor(c.co2Now || 0), 0);
         const summaryTotalCo2Ci = aggregatePts.length > 0
             ? aggregatePts[0].ci
-            : Math.sqrt(carbonResults.reduce((sumSq, c) => sumSq + (c.co2NowCi || 0) ** 2, 0));
+            : Math.round(carbonResults.reduce((sum, c) => sum + Math.floor((c.co2NowCi || 0) * 10) / 10, 0) * 10) / 10;
 
         const showAggregateAge = carbonResults.some((c, idx) => {
             const form = plotForms[idx];

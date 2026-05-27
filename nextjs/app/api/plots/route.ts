@@ -8,6 +8,7 @@ function rowToPlot(row: any) {
     userId: String(row.user_id),
     name: row.name,
     areaRai: parseFloat(row.area_rai) || 0,
+    selectedAreaRai: row.backend_data?.selectedAreaRai !== undefined ? parseFloat(row.backend_data.selectedAreaRai) : undefined,
     carbonTotal: parseFloat(row.carbon_total) || 0,
     rubberAge: row.rubber_age || 0,
     plantYearBE: row.plant_year_be ?? undefined,
@@ -157,7 +158,7 @@ export async function POST(request: NextRequest) {
             plot.luChecked ? JSON.stringify(plot.luChecked) : null,
             plot.forecast ? JSON.stringify(plot.forecast) : null,
             plot.carbonProfile ? JSON.stringify(plot.carbonProfile) : null,
-            plot.backendData ? JSON.stringify(plot.backendData) : null,
+            plot.backendData || plot.selectedAreaRai !== undefined ? JSON.stringify({ ...(plot.backendData || {}), selectedAreaRai: plot.selectedAreaRai }) : null,
             plot.geojson ? JSON.stringify(plot.geojson) : null,
             plot.boundaryGeojson ? JSON.stringify(plot.boundaryGeojson) : null,
           ]
