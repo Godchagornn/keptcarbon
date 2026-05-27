@@ -1382,7 +1382,7 @@ function PlotCard({ plot, index, onDelete, onEdit, expanded, onToggle, isMobile 
           {activeTab === "map" ? (
             <PlotMiniMap plot={plot} isMobile={isMobile} index={index} />
           ) : (
-            <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : (isProcessed ? "3fr 2fr" : "1fr"), gap: 20, alignItems: "stretch", minWidth: 0 }}>
+            <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : (isProcessed ? "1fr 1fr" : "1fr"), gap: 20, alignItems: "stretch", minWidth: 0 }}>
               {/* Left side: Graph Section */}
               <div style={{ minWidth: 0, overflow: "hidden", height: "100%", display: "flex", flexDirection: "column", justifyContent: "center" }}>
                 {isProcessed && barPts.length > 0 ? (
@@ -1402,8 +1402,8 @@ function PlotCard({ plot, index, onDelete, onEdit, expanded, onToggle, isMobile 
 
               {/* Right side: Details Section — only shown after processing */}
               {isProcessed && (
-              <div style={{ display: "flex", flexDirection: "column", gap: 8, fontSize: 13, color: "#475569" }}>
-                <div style={{ padding: "12px 14px", background: "rgba(16,185,129,0.04)", borderRadius: 10, border: "1px solid rgba(16,185,129,0.15)" }}>
+              <div style={{ display: "flex", flexDirection: "column", gap: 8, fontSize: 13, color: "#475569", height: "100%" }}>
+                <div style={{ padding: "12px 14px", background: "rgba(16,185,129,0.04)", borderRadius: 10, border: "1px solid rgba(16,185,129,0.15)", height: "100%" }}>
                   {/* Header Section */}
                   <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 12 }}>
                     <span style={{ fontWeight: 700, color: "#047857", display: "flex", alignItems: "center", gap: 6, fontSize: 14 }}>
