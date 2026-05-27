@@ -312,13 +312,13 @@ function aggregateProfiles(responses: EstimationResponse[], fallbackBaseAge: num
 
     const sortedYears = Array.from(yearMap.keys())
         .sort((a, b) => a - b);
-    
+
     const pts: BarPoint[] = sortedYears.map((year, j) => {
         const data = yearMap.get(year)!;
         const avgAge = data.validAgeCount > 0 ? Math.round(data.totalAge / data.validAgeCount) : fallbackBaseAge + j;
         const totalCI = Math.sqrt(data.sumSqCI);
         const totalGainCI = Math.sqrt(data.sumSqGainCI);
-        
+
         return {
             age: avgAge,
             yearBE: year + 543,
@@ -392,8 +392,8 @@ function PlotDetailCard({
 
     const variety = ep?.rubber_clone?.value ? String(ep.rubber_clone.value) : (form?.variety || "");
     const spacing = ep?.spacing_system?.value ? String(ep.spacing_system.value).replace(/\s*\([^)]*\)/, "").trim() : (form?.spacing || "");
-    const treeCount = (ep?.tree_count && typeof ep.tree_count.value === "number") 
-        ? ep.tree_count.value 
+    const treeCount = (ep?.tree_count && typeof ep.tree_count.value === "number")
+        ? ep.tree_count.value
         : (parseInt(form?.treeCount || "0") || cr.trees);
 
     const varietyDesc = getSourceText(ep?.rubber_clone?.source, !!form?.variety);
@@ -1982,11 +1982,11 @@ export function ParcelResultsPanel({
             }
         }
 
-        const summaryTotalCo2 = aggregatePts.length > 0 
-            ? aggregatePts[0].co2 
+        const summaryTotalCo2 = aggregatePts.length > 0
+            ? aggregatePts[0].co2
             : carbonResults.reduce((sum, c) => sum + c.co2Now, 0);
-        const summaryTotalCo2Ci = aggregatePts.length > 0 
-            ? aggregatePts[0].ci 
+        const summaryTotalCo2Ci = aggregatePts.length > 0
+            ? aggregatePts[0].ci
             : Math.sqrt(carbonResults.reduce((sumSq, c) => sumSq + (c.co2NowCi || 0) ** 2, 0));
 
         const showAggregateAge = carbonResults.some((c, idx) => {
@@ -2049,14 +2049,29 @@ export function ParcelResultsPanel({
                     >
                         <div style={{
                             width: 32, height: 32, borderRadius: 10, flexShrink: 0,
-                            background: "linear-gradient(135deg,#0ea5e9,#0284c7)",
+                            background: "linear-gradient(135deg,#10b981,#059669)",
                             color: "#fff", display: "flex", alignItems: "center",
                             justifyContent: "center", fontWeight: 800, fontSize: 14
                         }}>
                             <i className="bi bi-folder-fill" />
                         </div>
                         <div style={{ flex: 1 }}>
-                            <div style={{ fontWeight: 700, fontSize: 14, color: "#0f172a" }}>{projectName ? `โครงการ ${projectName}` : "โครงการ"}</div>
+                            {projectName ? (
+                                <div style={{ display: "flex", alignItems: "baseline", gap: 6, flexWrap: "wrap", lineHeight: 1.2, marginBottom: 2 }}>
+                                    <span style={{ color: "#202122ff", fontSize: 14, fontWeight: 600 }}>โครงการ</span>
+                                    <span style={{
+                                        fontWeight: 800,
+                                        fontSize: 16,
+                                        background: "linear-gradient(135deg, #10b981, #059669)",
+                                        WebkitBackgroundClip: "text",
+                                        WebkitTextFillColor: "transparent"
+                                    }}>
+                                        {projectName}
+                                    </span>
+                                </div>
+                            ) : (
+                                <div style={{ fontWeight: 700, fontSize: 14, color: "#0f172a", lineHeight: 1.2, marginBottom: 2 }}>โครงการ</div>
+                            )}
                             <div style={{ fontSize: 12, color: "#64748b" }}>
                                 {carbonResults.length} แปลง · {totalArea.toFixed(2)} ไร่
                             </div>
