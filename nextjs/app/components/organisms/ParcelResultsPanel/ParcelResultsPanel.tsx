@@ -1948,71 +1948,71 @@ export function ParcelResultsPanel({
                     background: "#fff",
                     borderRadius: 14,
                     border: "1px solid rgba(16,185,129,0.15)",
-                        overflow: "hidden",
-                        boxShadow: "0 2px 10px rgba(0,0,0,0.04)",
-                        marginBottom: 16
-                    }}>
-                        <div
-                            onClick={() => {
-                                const willExpand = expandedResultIdx !== "total";
-                                setExpandedResultIdx(willExpand ? "total" : null);
-                                if (willExpand) {
-                                    onMapPlotSelected?.("total");
-                                }
-                            }}
-                            style={{
-                                background: "linear-gradient(135deg,rgba(16,185,129,0.08),rgba(5,150,105,0.04))",
-                                padding: "10px 14px",
-                                display: "flex", alignItems: "center", gap: 10, cursor: "pointer",
-                                borderBottom: expandedResultIdx === "total" ? "1px solid rgba(16,185,129,0.1)" : "none"
-                            }}
-                        >
-                            <div style={{
-                                width: 32, height: 32, borderRadius: 10, flexShrink: 0,
-                                background: "linear-gradient(135deg,#0ea5e9,#0284c7)",
-                                color: "#fff", display: "flex", alignItems: "center",
-                                justifyContent: "center", fontWeight: 800, fontSize: 14
-                            }}>
-                                <i className="bi bi-folder-fill" />
-                            </div>
-                            <div style={{ flex: 1 }}>
-                                <div style={{ fontWeight: 700, fontSize: 14, color: "#0f172a" }}>{projectName ? `โครงการ ${projectName}` : "โครงการ"}</div>
-                                <div style={{ fontSize: 12, color: "#64748b" }}>
-                                    {carbonResults.length} แปลง · {totalArea.toFixed(2)} ไร่
-                                </div>
-                            </div>
-                            <i className={`bi bi-chevron-${expandedResultIdx === "total" ? 'up' : 'down'}`} style={{ color: "#64748b", fontSize: 14 }} />
+                    overflow: "hidden",
+                    boxShadow: "0 2px 10px rgba(0,0,0,0.04)",
+                    marginBottom: 16
+                }}>
+                    <div
+                        onClick={() => {
+                            const willExpand = expandedResultIdx !== "total";
+                            setExpandedResultIdx(willExpand ? "total" : null);
+                            if (willExpand) {
+                                onMapPlotSelected?.("total");
+                            }
+                        }}
+                        style={{
+                            background: "linear-gradient(135deg,rgba(16,185,129,0.08),rgba(5,150,105,0.04))",
+                            padding: "10px 14px",
+                            display: "flex", alignItems: "center", gap: 10, cursor: "pointer",
+                            borderBottom: expandedResultIdx === "total" ? "1px solid rgba(16,185,129,0.1)" : "none"
+                        }}
+                    >
+                        <div style={{
+                            width: 32, height: 32, borderRadius: 10, flexShrink: 0,
+                            background: "linear-gradient(135deg,#0ea5e9,#0284c7)",
+                            color: "#fff", display: "flex", alignItems: "center",
+                            justifyContent: "center", fontWeight: 800, fontSize: 14
+                        }}>
+                            <i className="bi bi-folder-fill" />
                         </div>
-
-                        {expandedResultIdx === "total" && (
-                            <div style={{ padding: "14px 14px 16px" }}>
-                                <div style={{
-                                    background: "linear-gradient(to right, rgba(13,148,136,0.08), rgba(20,184,166,0.03))",
-                                    border: "1px solid rgba(13,148,136,0.2)",
-                                    borderRadius: 12,
-                                    padding: "16px",
-                                    marginBottom: 16,
-                                    display: "flex",
-                                    flexDirection: "column",
-                                    justifyContent: "center",
-                                    alignItems: "center"
-                                }}>
-                                    <div style={{ fontSize: 13, color: "#0f766e", fontWeight: 700, marginBottom: 6, display: "flex", alignItems: "center", gap: 6 }}>
-                                        <i className="bi bi-cloud-arrow-down-fill" /> ปริมาณคาร์บอนเครดิตรวม ณ ปีปัจจุบัน
-                                    </div>
-                                    <div style={{ fontWeight: 800, color: "#0d9488", fontSize: isMobile ? 24 : 28, lineHeight: 1.1 }}>
-                                        {Math.floor(summaryTotalCo2).toLocaleString()} <span style={{ fontSize: isMobile ? 18 : 20, color: "#0f766e" }}>± {(Math.floor(summaryTotalCo2Ci * 10) / 10).toLocaleString("th-TH", { minimumFractionDigits: 1, maximumFractionDigits: 1 })}</span> <span style={{ fontSize: 16, fontWeight: 600, opacity: 0.8 }}>tCO₂eq</span>
-                                    </div>
-                                </div>
-
-                                {aggregatePts.length > 0 && (
-                                    <div>
-                                        <CarbonBarChart pts={aggregatePts} isMobile={isMobile} narrowMode={false} showAge={showAggregateAge} />
-                                    </div>
-                                )}
+                        <div style={{ flex: 1 }}>
+                            <div style={{ fontWeight: 700, fontSize: 14, color: "#0f172a" }}>{projectName ? `โครงการ ${projectName}` : "โครงการ"}</div>
+                            <div style={{ fontSize: 12, color: "#64748b" }}>
+                                {carbonResults.length} แปลง · {totalArea.toFixed(2)} ไร่
                             </div>
-                        )}
+                        </div>
+                        <i className={`bi bi-chevron-${expandedResultIdx === "total" ? 'up' : 'down'}`} style={{ color: "#64748b", fontSize: 14 }} />
                     </div>
+
+                    {expandedResultIdx === "total" && (
+                        <div style={{ padding: "14px 14px 16px" }}>
+                            <div style={{
+                                background: "linear-gradient(to right, rgba(13,148,136,0.08), rgba(20,184,166,0.03))",
+                                border: "1px solid rgba(13,148,136,0.2)",
+                                borderRadius: 12,
+                                padding: "16px",
+                                marginBottom: 16,
+                                display: "flex",
+                                flexDirection: "column",
+                                justifyContent: "center",
+                                alignItems: "center"
+                            }}>
+                                <div style={{ fontSize: 13, color: "#0f766e", fontWeight: 700, marginBottom: 6, display: "flex", alignItems: "center", gap: 6 }}>
+                                    <i className="bi bi-cloud-arrow-down-fill" /> ปริมาณคาร์บอนสะสมรวม ณ ปีปัจจุบัน
+                                </div>
+                                <div style={{ fontWeight: 800, color: "#0d9488", fontSize: isMobile ? 24 : 28, lineHeight: 1.1 }}>
+                                    {Math.floor(summaryTotalCo2).toLocaleString()} <span style={{ fontSize: isMobile ? 18 : 20, color: "#0f766e" }}>± {(Math.floor(summaryTotalCo2Ci * 10) / 10).toLocaleString("th-TH", { minimumFractionDigits: 1, maximumFractionDigits: 1 })}</span> <span style={{ fontSize: 16, fontWeight: 600, opacity: 0.8 }}>tCO₂eq</span>
+                                </div>
+                            </div>
+
+                            {aggregatePts.length > 0 && (
+                                <div>
+                                    <CarbonBarChart pts={aggregatePts} isMobile={isMobile} narrowMode={false} showAge={showAggregateAge} />
+                                </div>
+                            )}
+                        </div>
+                    )}
+                </div>
 
                 {/* ── Per-Plot Cards ────────────────────────────── */}
                 <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
@@ -2098,7 +2098,7 @@ export function ParcelResultsPanel({
                                                 alignItems: "center"
                                             }}>
                                                 <div style={{ fontSize: 13, color: "#0f766e", fontWeight: 700, marginBottom: 6, display: "flex", alignItems: "center", gap: 6 }}>
-                                                    <i className="bi bi-cloud-arrow-down-fill" /> ปริมาณคาร์บอนเครดิต ณ ปีปัจจุบัน
+                                                    <i className="bi bi-cloud-arrow-down-fill" /> ปริมาณคาร์บอนสะสม ณ ปีปัจจุบัน
                                                 </div>
                                                 <div style={{ fontWeight: 800, color: "#0d9488", fontSize: isMobile ? 24 : 28, lineHeight: 1.1 }}>
                                                     {Math.floor(cr.co2Now).toLocaleString()} <span style={{ fontSize: isMobile ? 16 : 18, color: "#0f766e" }}>± {(Math.floor((cr.co2NowCi || 0) * 10) / 10).toLocaleString("th-TH", { minimumFractionDigits: 1, maximumFractionDigits: 1 })}</span> <span style={{ fontSize: 16, fontWeight: 600, opacity: 0.8 }}>tCO₂eq</span>

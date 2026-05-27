@@ -115,7 +115,7 @@ function MapDrawContent() {
   const [projectType, setProjectType] = useState<"replanting" | "existing" | null>(null);
   const [projectName, setProjectName] = useState(projNameParam || "");
   const [stepWarningPopup, setStepWarningPopup] = useState<boolean>(false);
-  
+
   const [hiddenProjectPlots, setHiddenProjectPlots] = useState<GeoJSON.Feature[]>([]);
   const [autoProcessTrigger, setAutoProcessTrigger] = useState(0);
 
@@ -420,7 +420,7 @@ function MapDrawContent() {
         parcel.geometry = { ...geom, type: "Polygon", coordinates: [coords] };
         parcel.properties = { ...parcel.properties };
         parcel.properties.rai = polygonAreaM2(coords as LngLat[]) / 1600;
-        
+
         parcels[activePIdx] = parcel;
 
         const srcPlot = map.getSource("plot") as maplibregl.GeoJSONSource | undefined;
@@ -1183,26 +1183,26 @@ function MapDrawContent() {
                 province: p.province
               }
             }));
-            
+
             let visibleFeats = feats;
             let hiddenFeats: GeoJSON.Feature[] = [];
-            
+
             if (plotId) {
-                // Try to find by exact id match first
-                let editedPlot = feats.find(f => (f.properties as any).id === plotId);
-                // Fallback: try matching by string comparison
-                if (!editedPlot) {
-                    editedPlot = feats.find(f => String((f.properties as any).id) === String(plotId));
-                }
-                if (editedPlot) {
-                    visibleFeats = [editedPlot];
-                    hiddenFeats = feats.filter(f => (f.properties as any).id !== (editedPlot as GeoJSON.Feature).properties?.id);
-                } else {
-                    // plotId specified but no match found — show only first plot to avoid showing all
-                    console.warn("[AUTO-LOAD] plotId not found in project plots, showing first plot. plotId:", plotId, "available ids:", feats.map(f => (f.properties as any).id));
-                    visibleFeats = feats.slice(0, 1);
-                    hiddenFeats = feats.slice(1);
-                }
+              // Try to find by exact id match first
+              let editedPlot = feats.find(f => (f.properties as any).id === plotId);
+              // Fallback: try matching by string comparison
+              if (!editedPlot) {
+                editedPlot = feats.find(f => String((f.properties as any).id) === String(plotId));
+              }
+              if (editedPlot) {
+                visibleFeats = [editedPlot];
+                hiddenFeats = feats.filter(f => (f.properties as any).id !== (editedPlot as GeoJSON.Feature).properties?.id);
+              } else {
+                // plotId specified but no match found — show only first plot to avoid showing all
+                console.warn("[AUTO-LOAD] plotId not found in project plots, showing first plot. plotId:", plotId, "available ids:", feats.map(f => (f.properties as any).id));
+                visibleFeats = feats.slice(0, 1);
+                hiddenFeats = feats.slice(1);
+              }
             }
 
             console.log("[AUTO-LOAD] Setting drawnParcels and parcelFeatures to feats:", visibleFeats);
@@ -1404,15 +1404,15 @@ function MapDrawContent() {
       ring.forEach(c => bounds.extend(c as [number, number]));
       if (!bounds.isEmpty()) {
         const isMob = typeof window !== "undefined" && window.innerWidth < 768;
-        const pad = isMob 
-            ? { top: 60, bottom: 350, left: 60, right: 60 } 
-            : { top: 60, bottom: 60, left: 60, right: 380 };
-            
+        const pad = isMob
+          ? { top: 60, bottom: 350, left: 60, right: 60 }
+          : { top: 60, bottom: 60, left: 60, right: 380 };
+
         try {
-            map.fitBounds(bounds, { padding: pad, duration: 700, maxZoom: 17 });
+          map.fitBounds(bounds, { padding: pad, duration: 700, maxZoom: 17 });
         } catch (e) {
-            // fallback if padding exceeds container dimensions
-            map.fitBounds(bounds, { padding: 40, duration: 700, maxZoom: 17 });
+          // fallback if padding exceeds container dimensions
+          map.fitBounds(bounds, { padding: 40, duration: 700, maxZoom: 17 });
         }
       }
     }
@@ -1638,7 +1638,7 @@ function MapDrawContent() {
       if (dbId) {
         fetch(`/api/plots/${dbId}`, { method: 'DELETE' }).catch(console.error);
       }
-      
+
       const next = prev.filter((_, i) => i !== idx);
       const map = mapRef.current;
       if (map && mapLoadedRef.current) {
@@ -2320,8 +2320,8 @@ function MapDrawContent() {
               <i className="bi bi-geo-alt-fill" />
             </div>
             <div>
-              <div className="mds-panel-topbar-title">ระบบประเมินคาร์บอนเครดิต</div>
-              <div className="mds-panel-topbar-sub">KeptCarbon · ประเมินผลคาร์บอนเครดิต</div>
+              <div className="mds-panel-topbar-title">KeptCarbon</div>
+              <div className="mds-panel-topbar-sub">ระบบประเมินคาร์บอนเครดิต</div>
             </div>
           </div>
           <button
@@ -2459,36 +2459,39 @@ function MapDrawContent() {
                       /* ── Drawing in progress ── */
                       <div style={{
                         marginTop: 16,
-                        padding: "24px 20px",
+                        width: "100%",
+                        padding: isMobile() ? "24px 20px" : "12px 16px",
                         background: "rgba(220, 38, 38, 0.04)",
                         border: "1px dashed rgba(220, 38, 38, 0.3)",
-                        borderRadius: "16px",
+                        borderRadius: "12px",
                         display: "flex",
                         flexDirection: "column",
                         alignItems: "center",
-                        gap: 16,
+                        gap: isMobile() ? 16 : 8,
                         animation: "pulse-soft 2s infinite"
                       }}>
                         <div style={{
-                          width: "48px", height: "48px", borderRadius: "50%",
+                          width: isMobile() ? "48px" : "36px", 
+                          height: isMobile() ? "48px" : "36px", 
+                          borderRadius: "50%",
                           background: "rgba(220, 38, 38, 0.1)", color: "#dc2626",
                           display: "flex", alignItems: "center", justifyContent: "center",
-                          fontSize: "20px"
+                          fontSize: isMobile() ? "20px" : "16px"
                         }}>
                           <i className="bi bi-vector-pen" />
                         </div>
                         <div style={{ textAlign: "center" }}>
-                          <h3 style={{ margin: 0, fontSize: "16px", fontWeight: 700, color: "#0f172a" }}>กำลังวาดแปลง...</h3>
+                          <h3 style={{ margin: 0, fontSize: isMobile() ? "16px" : "14px", fontWeight: 700, color: "#0f172a" }}>กำลังวาดแปลง...</h3>
                         </div>
                         <button
                           className="mds-btn"
                           style={{
                             width: "100%",
+                            padding: isMobile() ? "12px" : "10px",
                             background: "#ef4444",
                             color: "#fff",
                             border: "none",
-                            padding: "12px",
-                            borderRadius: "12px",
+                            borderRadius: "10px",
                             fontWeight: 700,
                             boxShadow: "0 4px 12px rgba(239,68,68,0.25)"
                           }}
@@ -2667,7 +2670,7 @@ function MapDrawContent() {
                     setDrawnParcels(merged);
                     setParcelFeatures(merged);
                     setHiddenProjectPlots([]);
-                    
+
                     const map = mapRef.current;
                     if (map && map.getSource("matched-parcels")) {
                       (map.getSource("matched-parcels") as maplibregl.GeoJSONSource).setData({ type: "FeatureCollection", features: merged });
@@ -2681,7 +2684,7 @@ function MapDrawContent() {
                       });
                       if (!bounds.isEmpty()) map.fitBounds(bounds, { padding: 50 });
                     }
-                    
+
                     setTimeout(() => {
                       setAutoProcessTrigger(prev => prev + 1);
                     }, 50);
