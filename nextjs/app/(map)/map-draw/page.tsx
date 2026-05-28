@@ -897,7 +897,7 @@ function MapDrawContent() {
           "line-blur":    ["interpolate", ["linear"], ["zoom"], 6, 3,  14, 10],
         },
       });
-      // Main animated flowing line — thickens on zoom
+      // Main solid line — thickens on zoom
       map.addLayer({
         id: "province-boundary-line",
         type: "line",
@@ -906,28 +906,8 @@ function MapDrawContent() {
           "line-color": "#f97316",
           "line-width": ["interpolate", ["linear"], ["zoom"], 6, 1.5, 10, 2.5, 14, 5],
           "line-opacity": 0.95,
-          "line-dasharray": [0, 4, 3],
         },
       });
-      // Start flowing-dash animation (~12 fps)
-      {
-        const frames = [
-          [0,4,3],[0.5,4,2.5],[1,4,2],[1.5,4,1.5],[2,4,1],[2.5,4,0.5],[3,4,0],
-          [0,0.5,3,3.5],[0,1,3,3],[0,1.5,3,2.5],[0,2,3,2],[0,2.5,3,1.5],[0,3,3,1],[0,3.5,3,0.5],
-        ];
-        let step = 0, last = 0;
-        const tick = (t: number) => {
-          if (t - last > 80) {
-            step = (step + 1) % frames.length;
-            if (map.getLayer("province-boundary-line")) {
-              map.setPaintProperty("province-boundary-line", "line-dasharray", frames[step]);
-            }
-            last = t;
-          }
-          boundaryAnimRef.current = requestAnimationFrame(tick);
-        };
-        boundaryAnimRef.current = requestAnimationFrame(tick);
-      }
       // ─────────────────────────────────────────────────────────────────────
 
       map.addSource("draw-line", { type: "geojson", data: emptyFC() });
