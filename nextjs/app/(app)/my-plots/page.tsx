@@ -1036,8 +1036,7 @@ function ProjectCarbonSummary({ plots, isMobile }: { plots: SavedPlot[]; isMobil
   ).length;
   const totalAreaRai = plots.reduce((s, p) => s + (p.selectedAreaRai || p.areaRai || 0), 0);
   const totalTrees = plots.reduce((s, p) => s + (p.trees || 0), 0);
-  const yr5Pt = combinedPts.length > 5 ? combinedPts[5] : null;
-  const yr10Pt = combinedPts.length > 10 ? combinedPts[10] : null;
+  const cyclePts = combinedPts.filter(pt => pt.year_at > 0 && pt.year_at % 7 === 0);
 
   if (combinedPts.length === 0 && totalNow === 0) return null;
 
@@ -1174,16 +1173,20 @@ function ProjectCarbonSummary({ plots, isMobile }: { plots: SavedPlot[]; isMobil
           <div style={{ position: "relative", display: "grid", gridTemplateColumns: "1fr 1fr", gap: isMobile ? 8 : 10 }}>
             <StatCard icon="bi-check-circle-fill" iconColor="#10b981" label="ประมวลผลแล้ว" value={`${processedCount}/${plots.length}`} unit="แปลง" valueColor="#047857" />
             <StatCard icon="bi-grid-fill" iconColor="#0d9488" label="พื้นที่รวม" value={totalAreaRai.toFixed(1)} unit="ไร่" valueColor="#0d9488" />
-            {yr5Pt ? (
-              <StatCard icon="bi-graph-up-arrow" iconColor="#3b82f6" label={`พยากรณ์ พ.ศ. ${yr5Pt.yearBE}`} value={Math.floor(yr5Pt.co2).toLocaleString("th-TH")} unit="tCO₂" valueColor="#1d4ed8" />
-            ) : (
-              <div style={{ background: "rgba(255,255,255,0.5)", borderRadius: 12, padding: "12px 14px", border: "1px dashed rgba(16,185,129,0.15)" }} />
-            )}
-            {yr10Pt ? (
-              <StatCard icon="bi-graph-up-arrow" iconColor="#8b5cf6" label={`พยากรณ์ พ.ศ. ${yr10Pt.yearBE}`} value={Math.floor(yr10Pt.co2).toLocaleString("th-TH")} unit="tCO₂" valueColor="#6d28d9" />
-            ) : (
-              <div style={{ background: "rgba(255,255,255,0.5)", borderRadius: 12, padding: "12px 14px", border: "1px dashed rgba(16,185,129,0.15)" }} />
-            )}
+            {cyclePts.map((pt, idx) => {
+              const isEven = idx % 2 === 0;
+              return (
+                <StatCard 
+                  key={pt.year_at}
+                  icon="bi-graph-up-arrow" 
+                  iconColor={isEven ? "#3b82f6" : "#8b5cf6"} 
+                  label={`ปีที่ ${pt.year_at} (พ.ศ. ${pt.yearBE})`} 
+                  value={Math.floor(pt.co2).toLocaleString("th-TH")} 
+                  unit="tCO₂" 
+                  valueColor={isEven ? "#1d4ed8" : "#6d28d9"} 
+                />
+              );
+            })}
           </div>
 
           {/* Trees info */}

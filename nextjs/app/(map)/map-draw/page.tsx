@@ -298,18 +298,41 @@ function MapDrawContent() {
     function onVertsTouchStart(e: maplibregl.MapTouchEvent) {
       const map = mapRef.current;
       if (!map || drawingRef.current) return;
+
+      // Use manual proximity check with large finger-friendly hit radius
+      const TOUCH_RADIUS = 30;
+      const touchPt = e.point;
+      let bestDist = TOUCH_RADIUS;
+      let bestPIdx = -1;
+      let bestVIdx = -1;
+      let bestIsMid = false;
+
+      const vertFeats = getVertFeatures(drawnParcelsRef.current);
+      for (const vf of vertFeats) {
+        if (vf.geometry.type !== "Point") continue;
+        const screenPt = map.project(vf.geometry.coordinates as [number, number]);
+        const d = Math.hypot(touchPt.x - screenPt.x, touchPt.y - screenPt.y);
+        if (d < bestDist && vf.properties) {
+          bestDist = d;
+          bestPIdx = vf.properties.pIdx;
+          bestVIdx = vf.properties.vIdx;
+          bestIsMid = vf.properties.isMid;
+        }
+      }
+
+      if (bestPIdx === -1) return;
+
       e.preventDefault();
-      const features = map.queryRenderedFeatures(e.point, { layers: ['plot-verts-l'] });
-      if (!features.length) return;
-      const f = features[0];
-      const { pIdx, vIdx, isMid } = f.properties;
+      const pIdx = bestPIdx;
+      const vIdx = bestVIdx;
+      const isMid = bestIsMid;
+      const touch = (e.lngLats && e.lngLats.length > 0) ? e.lngLats[0] : e.lngLat;
 
       if (isMid) {
         const parcels = [...drawnParcelsRef.current];
         const parcel = { ...parcels[pIdx] };
         if (parcel.geometry.type === "Polygon") {
           const coords = [...parcel.geometry.coordinates[0]];
-          const touch = e.lngLats[0];
           coords.splice(vIdx + 1, 0, [touch.lng, touch.lat]);
           parcel.geometry.coordinates[0] = coords;
           parcels[pIdx] = parcel;
@@ -332,12 +355,12 @@ function MapDrawContent() {
     function onVertsTouchMove(e: maplibregl.MapTouchEvent) {
       const map = mapRef.current;
       if (!map || activePIdx === -1) return;
-      if (!e.lngLats || !e.lngLats.length) return;
+      const touch = (e.lngLats && e.lngLats.length > 0) ? e.lngLats[0] : e.lngLat;
+      if (!touch) return;
       const parcels = [...drawnParcelsRef.current];
       const parcel = parcels[activePIdx];
       if (parcel && parcel.geometry.type === "Polygon") {
         const coords = [...parcel.geometry.coordinates[0]];
-        const touch = e.lngLats[0];
         coords[activeVIdx] = [touch.lng, touch.lat];
         if (activeVIdx === 0) {
           coords[coords.length - 1] = [touch.lng, touch.lat];
@@ -716,7 +739,7 @@ function MapDrawContent() {
     };
 
     map.on('mousedown', 'plot-verts-l', onVertsDown);
-    map.on('touchstart', 'plot-verts-l', onVertsTouchStart);
+    map.on('touchstart', onVertsTouchStart);
     map.on('contextmenu', 'plot-verts-l', onVertsContextMenu);
     map.on('mouseenter', 'plot-verts-l', mouseEnterVerts);
     map.on('mousemove', 'plot-verts-l', mouseMoveVerts);
@@ -733,7 +756,7 @@ function MapDrawContent() {
       map.off('touchend', onVertsTouchEnd);
 
       map.off('mousedown', 'plot-verts-l', onVertsDown);
-      map.off('touchstart', 'plot-verts-l', onVertsTouchStart);
+      map.off('touchstart', onVertsTouchStart);
       map.off('contextmenu', 'plot-verts-l', onVertsContextMenu);
       map.off('mouseenter', 'plot-verts-l', mouseEnterVerts);
       map.off('mousemove', 'plot-verts-l', mouseMoveVerts);
@@ -1503,8 +1526,9 @@ function MapDrawContent() {
     if (!map) return;
     const onClick = (e: maplibregl.MapMouseEvent) => {
       if (!drawingRef.current) return;
-      // skip click if it was the end of a vertex drag
+      // skip click if it was the end of a vertex drag (mouse or touch)
       if (wasDragging) { wasDragging = false; return; }
+      if (drawTouchWasDragging) { drawTouchWasDragging = false; return; }
       const pts = vertsRef.current;
 
       // Auto-close polygon if clicking near the first point
@@ -1540,6 +1564,48 @@ function MapDrawContent() {
     let dragIdx = -1;
     let wasDragging = false;
     let hoveredDrawVertId: number | null = null;
+
+    // Touch drag for drawing-mode vertices (mobile)
+    let drawTouchDragIdx = -1;
+    let drawTouchWasDragging = false;
+
+    const onDrawTouchStart = (e: maplibregl.MapTouchEvent) => {
+      if (!drawingRef.current) return;
+      const TOUCH_RADIUS = 30;
+      const touchPt = e.point;
+      let bestDist = TOUCH_RADIUS;
+      let bestIdx = -1;
+      vertsRef.current.forEach((v, idx) => {
+        const screenPt = map.project(v as [number, number]);
+        const d = Math.hypot(touchPt.x - screenPt.x, touchPt.y - screenPt.y);
+        if (d < bestDist) { bestDist = d; bestIdx = idx; }
+      });
+      if (bestIdx === -1) return;
+      e.preventDefault();
+      drawTouchDragIdx = bestIdx;
+      drawTouchWasDragging = false;
+      map.dragPan.disable();
+      map.on('touchmove', onDrawTouchMove);
+      map.on('touchend', onDrawTouchEnd);
+    };
+
+    const onDrawTouchMove = (e: maplibregl.MapTouchEvent) => {
+      if (!drawingRef.current || drawTouchDragIdx === -1) return;
+      const touch = (e.lngLats && e.lngLats.length > 0) ? e.lngLats[0] : e.lngLat;
+      if (!touch) return;
+      drawTouchWasDragging = true;
+      vertsRef.current[drawTouchDragIdx] = [touch.lng, touch.lat];
+      previewDraw();
+    };
+
+    const onDrawTouchEnd = () => {
+      if (drawTouchDragIdx !== -1) {
+        map.dragPan.enable();
+        map.off('touchmove', onDrawTouchMove);
+        map.off('touchend', onDrawTouchEnd);
+        drawTouchDragIdx = -1;
+      }
+    };
 
     const onDrawMouseMove = (ev: maplibregl.MapMouseEvent) => {
       if (!drawingRef.current) return;
@@ -1627,6 +1693,7 @@ function MapDrawContent() {
     map.on("mousemove", onDrawMouseMove);
     map.on("mousedown", onDrawMouseDown);
     map.on("mouseup", onDrawMouseUp);
+    map.on("touchstart", onDrawTouchStart);
 
     return () => {
       map.off("click", onClick);
@@ -1635,6 +1702,9 @@ function MapDrawContent() {
       map.off("mousemove", onDrawMouseMove);
       map.off("mousedown", onDrawMouseDown);
       map.off("mouseup", onDrawMouseUp);
+      map.off("touchstart", onDrawTouchStart);
+      map.off("touchmove", onDrawTouchMove);
+      map.off("touchend", onDrawTouchEnd);
       map.dragPan.enable();
       if (hoveredDrawVertId !== null) {
         map.setFeatureState({ source: 'draw-verts', id: hoveredDrawVertId }, { hover: false });
