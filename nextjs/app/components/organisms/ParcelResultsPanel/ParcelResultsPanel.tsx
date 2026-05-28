@@ -14,6 +14,7 @@ type Props = {
     searchTruncated: boolean;
     parcelFeatures: GeoJSON.Feature[];
     luFeatures?: GeoJSON.Feature[];
+    rawPlantationInfo?: any[];
     userDisplayName?: string;
     drawnGeometry?: GeoJSON.Geometry | null;
     onFlyTo: (feature: GeoJSON.Feature) => void;
@@ -35,6 +36,8 @@ type Props = {
     onBeforeProcess?: () => boolean;
     autoProcessTrigger?: number;
     onSave?: () => void;
+    existingProjectPlots?: any[];
+    editingPlotId?: string | null;
 };
 
 
@@ -556,6 +559,7 @@ export function ParcelResultsPanel({
     searchTruncated,
     parcelFeatures,
     luFeatures = [],
+    rawPlantationInfo,
     userDisplayName = "",
     drawnGeometry = null,
     onFlyTo,
@@ -577,6 +581,8 @@ export function ParcelResultsPanel({
     onBeforeProcess,
     autoProcessTrigger,
     onSave,
+    existingProjectPlots,
+    editingPlotId,
 }: Props) {
     const [expandedIdx, setExpandedIdx] = useState<number | null>(0);
     const [expandedResultIdx, setExpandedResultIdx] = useState<number | "total" | null>(null);
@@ -776,6 +782,8 @@ export function ParcelResultsPanel({
     const [ownerName, setOwnerName] = useState(userDisplayName);
     const [province, setProvince] = useState("");
     const [saveState, setSaveState] = useState<"idle" | "saving" | "done">("idle");
+    const [dbProjectId, setDbProjectId] = useState<number | null>(null);
+    const [guestUserId, setGuestUserId] = useState<string | null>(null);
     const [plotForms, setPlotForms] = useState<PlotFormData[]>([]);
 
     // When plotForms grows (new parcel added), propagate initial luChecked to map
@@ -1193,10 +1201,8 @@ export function ParcelResultsPanel({
 
             onStepChange(3);
 
-            // Auto-save to backend if logged in
-            if (user) {
-                handleSave(results, responses).catch(console.error);
-            }
+            // Auto-save to backend for both logged-in users and guests
+            handleSave(results, responses, polygons).catch(console.error);
         } catch (err) {
             setCarbonErr(getFriendlyErrorMessage(err, plots, plotForms));
         } finally {
@@ -1217,90 +1223,123 @@ export function ParcelResultsPanel({
 
     // Removed: if (!(searchRunning || searchErr || searchCount !== null)) return null;
 
-    const handleSave = async (overrideResults?: CarbonResult[], overrideResponses?: any[]) => {
-        if (isDuplicateProjectName) {
+    const handleSave = async (overrideResults?: CarbonResult[], overrideResponses?: any[], overridePolygons?: PlantationPolygon[]) => {
+        if (user && isDuplicateProjectName) {
             setCarbonErr("ชื่อโครงการนี้ถูกใช้งานแล้ว กรุณาใช้ชื่ออื่น");
             return;
         }
-        const resultsToSave = overrideResults || carbonResults;
-        const hasCarbonResults = resultsToSave.length > 0;
-
-        // Match luFeatures to plots so we can save them
-        const featuresToUse = luFeatures && luFeatures.length > 0 ? luFeatures : parcelFeatures;
-        const featsByPlot: Record<number, typeof featuresToUse> = {};
-        for (let idx = 0; idx < parcelFeatures.length; idx++) featsByPlot[idx] = [];
-
-        featuresToUse.forEach(feat => {
-            const props = (feat.properties ?? {}) as Record<string, unknown>;
-            const plotIdxFromProp = props.plot_index !== undefined ? parseInt(String(props.plot_index)) - 1 : -1;
-            let matchedPlotIdx = -1;
-            if (plotIdxFromProp >= 0 && plotIdxFromProp < parcelFeatures.length) {
-                matchedPlotIdx = plotIdxFromProp;
-            } else {
-                const samplePoint = getSamplePoint(feat.geometry);
-                for (let idx = 0; idx < parcelFeatures.length; idx++) {
-                    if (isPointInGeometry(samplePoint, parcelFeatures[idx].geometry)) {
-                        matchedPlotIdx = idx;
-                        break;
-                    }
-                }
-            }
-            if (matchedPlotIdx >= 0) featsByPlot[matchedPlotIdx].push(feat);
-        });
 
         setSaveState("saving");
-
         await new Promise(r => setTimeout(r, 900));
+
         try {
-            if (!user) return;
+            const activeResponses = overrideResponses || backendResponses || [];
+            const activePolygons = overridePolygons || [];
+
+            // Build plantation_info: ใช้ rawPlantationInfo ที่ส่งมาจาก API จริงๆ ถ้ามี
+            const plantationInfo = rawPlantationInfo && rawPlantationInfo.length > 0 
+                ? rawPlantationInfo 
+                : parcelFeatures.map((feat, i) => {
+                    const props = (feat?.properties || {}) as any;
+                    const plotGeom = feat?.geometry || null;
+                    const plotLuFeats = (luFeatures || []).filter(lf => {
+                    const lfProps = (lf.properties ?? {}) as any;
+                    const lfPlotIdx = lfProps.plot_index !== undefined ? parseInt(String(lfProps.plot_index)) - 1 : -1;
+                    return lfPlotIdx === i;
+                });
+
+                return {
+                    polygon_id: `parcel-${i}-${Date.now()}`,
+                    province_code: plots[i]?.province || props.province || "",
+                    geometry: plotGeom,
+                    area_m2: (plots[i]?.areaRai || 0) * 1600,
+                    status: {
+                        status: "success",
+                        status_code: "S02",
+                        message: "LAND USE CLASSIFICATION AND AREA CALCULATION COMPLETED."
+                    },
+                    lu_polygon: plotLuFeats.map(lf => ({
+                        lu_class: (lf.properties as any)?.lu_class || null,
+                        lu_class_desc_th: (lf.properties as any)?.lu_class_desc_th || null,
+                        geometry: lf.geometry,
+                        area_m2: (lf.properties as any)?.area_m2 || 0,
+                        area_percent: (lf.properties as any)?.area_percent || 0,
+                    })),
+                };
+            });
+
+            // Build polygons_payload: ข้อมูลที่ส่งไป backend สำหรับ estimateCarbon
+            const polygonsPayload = activePolygons.length > 0
+                ? activePolygons
+                : parcelFeatures.map((feat, i) => {
+                    const form = plotForms[i] || {};
+                    const userYearBE = form.plantYear ? parseInt(form.plantYear) : 0;
+                    return {
+                        id: `plot-${i}`,
+                        geometry: feat?.geometry || null,
+                        year_of_planting: userYearBE > 0 ? userYearBE - 543 : null,
+                        rubber_clone: (form.variety && SUPPORTED_CLONES.includes(form.variety)) ? form.variety : null,
+                        tree_count: form.treeCount ? (parseInt(form.treeCount) || null) : null,
+                        spacing_system: form.spacing || null,
+                        selected_lu_classes: Object.entries(form?.luChecked || {})
+                            .filter(([, on]) => on)
+                            .map(([cls]) => cls),
+                        project_type: form?.plantStatus || "existing",
+                    };
+                });
+
+            // Determine user_id and project_id
+            let userId: string | undefined;
+            let projectId: string | undefined;
+
+            if (user) {
+                // Logged in: ใช้ username จาก user, project name จาก form
+                userId = user.username || user.email || String(user.id);
+                projectId = projectName || "Unnamed Project";
+            } else if (guestUserId) {
+                // Guest re-save: ส่ง userId ที่ได้จาก POST ครั้งแรก เพื่อให้ PATCH ระบุตัวตนได้
+                userId = guestUserId;
+            }
+
+            let res;
+            
             const CURRENT_BE_NOW = new Date().getFullYear() + 543;
-            const activeResponses = overrideResponses || backendResponses;
-            const newPlots = plots.map((p, i) => {
-                const feat = parcelFeatures[i];
+            const frontendPlots = parcelFeatures.map((feat, i) => {
                 const props = (feat?.properties || {}) as any;
-                const cr = resultsToSave[i];
-                const form = plotForms[i];
-
-                const userPlantYear = form?.plantYear ? parseInt(form.plantYear) : 0;
-                const userTrees = form?.treeCount ? parseInt(form.treeCount) : 0;
-
-                const backendResp = activeResponses?.find(r => r.polygon_id === `plot-${i}`);
-                const ep = backendResp?.estimated_parameters;
-
-                const epPlantYearCE = typeof ep?.year_of_planting?.value === "number" ? ep.year_of_planting.value : 0;
-                const epPlantYearBE = epPlantYearCE > 0 ? epPlantYearCE + 543 : 0;
-                const epTrees = typeof ep?.tree_count?.value === "number" ? ep.tree_count.value : 0;
-
-                const dominantProvince = plotsLuRealData[i]
-                    ? Object.keys(plotsLuRealData[i])[0] || ""
-                    : "";
-
-                const hasNewResult = !!cr && hasCarbonResults;
-
-                const age = hasNewResult ? cr.age : (props.rubberAge > 0 ? props.rubberAge : (userPlantYear > 0 ? (CURRENT_BE_NOW - userPlantYear) : (epPlantYearBE > 0 ? (CURRENT_BE_NOW - epPlantYearBE) : 0)));
-                const trees = hasNewResult ? cr.trees : (props.trees > 0 ? props.trees : (userTrees > 0 ? userTrees : (epTrees > 0 ? epTrees : 0)));
-                const finalPlantYear = hasNewResult ? cr.plantYearBE : (props.plantYearBE > 0 ? props.plantYearBE : (userPlantYear > 0 ? userPlantYear : epPlantYearBE));
-
-                // If saved directly without processing, retain previous carbon if it exists
-                const co2 = hasNewResult ? cr.co2Now : (props.carbonTotal ?? 0);
-                const isProcessed = hasNewResult ? true : (props.processed ?? false);
-
-                // Use backend estimated_parameters to fill missing variety/spacing when user didn't fill form
-                const epVariety = typeof ep?.rubber_clone?.value === "string" ? ep.rubber_clone.value : "";
-                const epSpacingRaw = typeof ep?.spacing_system?.value === "string" ? ep.spacing_system.value : "";
-                const epSpacing = epSpacingRaw.replace(/\s*\([^)]*\)/, "").trim(); // "2.5x8 (default)" → "2.5x8"
-
-                const variety = form?.variety || cr?.variety || props.variety || epVariety;
+                const form = plotForms[i] || {};
+                const ep = activeResponses.find((r: any) => r.polygon_id === `plot-${i}`)?.estimated_parameters;
+                const backendResp = activeResponses.find((r: any) => r.polygon_id === `plot-${i}`);
+                
+                const p = computePlot(feat);
+                const cr = overrideResults ? overrideResults[i] : carbonResults[i];
+                
+                const hasNewResult = cr && cr.co2Now !== undefined;
+                const co2 = hasNewResult ? cr.co2Now : 0;
+                
+                const epPlantYearBE = ep?.year_of_planting ? ep.year_of_planting + 543 : 0;
+                const epVariety = ep?.rubber_clone || "";
+                const epTrees = ep?.tree_count || 0;
+                const epSpacing = ep?.spacing_system || "";
+                
+                let finalPlantYear = epPlantYearBE;
+                if (form?.plantYear && parseInt(form.plantYear) > 0) {
+                    finalPlantYear = parseInt(form.plantYear);
+                } else if (!finalPlantYear && p.plantYearBE > 0) {
+                    finalPlantYear = p.plantYearBE;
+                }
+                const age = finalPlantYear > 0 ? (CURRENT_BE_NOW - finalPlantYear) : 0;
+                
+                const trees = cr?.trees || form?.treeCount || props.trees || epTrees;
+                const variety = cr?.variety || form?.variety || props.variety || epVariety;
                 const spacing = cr?.spacing || form?.spacing || props.spacing || epSpacing;
-
-                // Save backend profile as BarPoint[] so my-plots can render the exact same chart
+                
                 const rawProfile = backendResp?.carbon_profile ?? [];
-                let carbonProfile = props.carbonProfile ?? null;
+                let carbonProfile: any[] = [];
                 if (hasNewResult && rawProfile.length > 0) {
                     carbonProfile = profileToBarPoints(rawProfile, age);
                 }
-
-                let forecast = props.forecast ?? { yr3: 0, yr5: 0, yr7: 0 };
+                
+                let forecast = { yr3: 0, yr5: 0, yr7: 0 };
                 if (hasNewResult) {
                     forecast = {
                         yr3: carbonCo2(age + 3, trees, spacing),
@@ -1309,9 +1348,14 @@ export function ParcelResultsPanel({
                     };
                 }
 
+                const plotLuFeats = (luFeatures || []).filter(lf => {
+                    const lfProps = (lf.properties ?? {}) as any;
+                    const lfPlotIdx = lfProps.plot_index !== undefined ? parseInt(String(lfProps.plot_index)) - 1 : -1;
+                    return lfPlotIdx === i;
+                });
+                
                 return {
                     id: props.id || Math.random().toString(36).substring(7),
-                    userId: user.id,
                     name: projectName || props.farm_name || "แปลงยางใหม่",
                     areaRai: p.areaRai,
                     selectedAreaRai: hasNewResult ? cr.selectedAreaRai : (props.selectedAreaRai || p.areaRai),
@@ -1325,15 +1369,19 @@ export function ParcelResultsPanel({
                     plantStatus: form?.plantStatus || "",
                     confidence: p.confidence,
                     ownerName: ownerName || props.owner_name || "",
-                    province: province || dominantProvince,
+                    province: province || plots[i]?.province || props.province || "",
                     date: new Date().toISOString(),
                     geojson: feat?.geometry || null,
-                    boundaryGeojson: drawnGeometry || null,
+                    boundaryGeojson: null,
                     carbonProfile,
-                    processed: isProcessed,
+                    processed: !!hasNewResult,
                     forecast,
                     backendData: {
-                        lu_polygon: featsByPlot[i] || [],
+                        lu_polygon: plotLuFeats.map(lf => ({
+                            type: "Feature",
+                            properties: lf.properties,
+                            geometry: lf.geometry
+                        })),
                         plantYearBE: epPlantYearBE,
                         age: epPlantYearBE > 0 ? (CURRENT_BE_NOW - epPlantYearBE) : 0,
                         variety: epVariety,
@@ -1344,18 +1392,50 @@ export function ParcelResultsPanel({
                     }
                 };
             });
-            const newPlotsWithStatus = newPlots.filter(p => p.plantStatus);
-            if (newPlotsWithStatus.length === 0) {
-                setCarbonErr("กรุณาเลือกสถานะแปลงอย่างน้อย 1 แปลงก่อนบันทึก");
-                setSaveState("idle");
-                return;
+            
+            // When editing a single plot, preserve all other plots from the project
+            let finalFrontendPlots = frontendPlots;
+            if (existingProjectPlots && existingProjectPlots.length > 0 && editingPlotId) {
+                const updatedPlot = frontendPlots[0];
+                finalFrontendPlots = existingProjectPlots.map((p: any) =>
+                    String(p.id) === String(editingPlotId) ? updatedPlot : p
+                );
             }
-            await fetch("/api/plots", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ plots: newPlotsWithStatus }),
-            });
-        } catch (e) { console.error(e); }
+
+            const saveBody: Record<string, unknown> = {
+                plantationInfo,
+                polygonsPayload,
+                backendResponses: activeResponses,
+                frontendPlots: finalFrontendPlots,
+            };
+            if (userId) saveBody.userId = userId;
+            if (projectId) saveBody.projectId = projectId;
+
+            if (dbProjectId) {
+                res = await fetch(`/api/plots/${dbProjectId}`, {
+                    method: "PATCH",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(saveBody),
+                });
+            } else {
+                res = await fetch("/api/plots", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(saveBody),
+                });
+            }
+
+            if (res.ok) {
+                const data = await res.json();
+                if (data.project?.id) {
+                    setDbProjectId(data.project.id);
+                }
+                // บันทึก guest userId ที่ server สร้างให้ เพื่อใช้กับ PATCH ครั้งถัดไป
+                if (!user && data.project?.userId) {
+                    setGuestUserId(data.project.userId);
+                }
+            }
+        } catch (e) { console.error("handleSave error:", e); }
         setSaveState("done");
         onSave?.();
         setTimeout(() => setSaveState("idle"), 2000);

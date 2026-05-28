@@ -1,196 +1,286 @@
 import { NextRequest, NextResponse } from "next/server";
 import { pool } from "@/lib/db";
-import { verifyToken, AUTH_COOKIE } from "@/lib/jwt";
+import { verifyToken, AUTH_COOKIE, JwtPayload } from "@/lib/jwt";
 
-function rowToPlot(row: any) {
+// ---------------------------------------------------------------------------
+// Helper: สร้าง Guest ID ที่ไม่ซ้ำ (timestamp-random)
+// ---------------------------------------------------------------------------
+function generateGuestUserId(): string {
+  const ts = Math.floor(Date.now() / 1000);
+  const rand = Math.floor(1000 + Math.random() * 9000);
+  return `Guest-${ts}-${rand}`;
+}
+
+function generateGuestProjectId(): string {
+  const ts = Math.floor(Date.now() / 1000);
+  const rand = Math.floor(1000 + Math.random() * 9000);
+  return `Guestprojects-${ts}-${rand}`;
+}
+
+// ---------------------------------------------------------------------------
+// Helper: ดึง username จาก users table ด้วย userId (number)
+// ---------------------------------------------------------------------------
+async function getUserIdentifier(payload: JwtPayload): Promise<string> {
+  const result = await pool.query(
+    `SELECT fullname, username, email FROM users WHERE id = $1`,
+    [payload.userId]
+  );
+  if (result.rows.length > 0) {
+    return result.rows[0].fullname || result.rows[0].username || result.rows[0].email || String(payload.userId);
+  }
+  return String(payload.userId);
+}
+
+// ---------------------------------------------------------------------------
+// Helper: แปลง DB row → API response object
+// ---------------------------------------------------------------------------
+function rowToProject(row: any) {
   return {
     id: row.id,
-    userId: String(row.user_id),
-    name: row.name,
-    areaRai: parseFloat(row.area_rai) || 0,
-    selectedAreaRai: row.backend_data?.selectedAreaRai !== undefined ? parseFloat(row.backend_data.selectedAreaRai) : undefined,
-    carbonTotal: parseFloat(row.carbon_total) || 0,
-    rubberAge: row.rubber_age || 0,
-    plantYearBE: row.plant_year_be ?? undefined,
-    trees: row.trees ?? undefined,
-    variety: row.variety ?? undefined,
-    spacing: row.spacing ?? undefined,
-    ownerName: row.owner_name ?? undefined,
-    province: row.province ?? undefined,
-    date: row.created_at,
-    plantStatus: row.plant_status ?? undefined,
-    processed: row.processed ?? false,
-    luChecked: row.lu_checked ?? undefined,
-    forecast: row.forecast ?? undefined,
-    carbonProfile: row.carbon_profile ?? undefined,
-    backendData: row.backend_data ?? undefined,
-    geojson: row.geojson_data ?? undefined,
-    boundaryGeojson: row.boundary_geojson_data ?? undefined,
+    userId: row.user_id,
+    projectId: row.project_id,
+    plantationInfo: row.plantation_info ?? {},
+    polygonsPayload: row.polygons_payload ?? [],
+    backendResponses: row.backend_responses ?? [],
+    status: row.status,
+    deletedAt: row.deleted_at,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
   };
 }
 
-/** GET /api/plots — list plots for current user (admin: ?all=true) */
+
+
+// ---------------------------------------------------------------------------
+// GET /api/plots — list projects (soft delete: แสดงเฉพาะ status = 'active')
+// ---------------------------------------------------------------------------
 export async function GET(request: NextRequest) {
+  // ตรวจสอบว่ามี token หรือไม่ (ถ้าไม่มี = guest)
   const token = request.cookies.get(AUTH_COOKIE)?.value;
-  if (!token) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  const payload = verifyToken(token);
-  if (!payload) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const payload = token ? verifyToken(token) : null;
 
   const { searchParams } = new URL(request.url);
-  const showAll = payload.role === "admin" && searchParams.get("all") === "true";
-  const filterName = searchParams.get("name");
+
+  // Admin สามารถดูทั้งหมดได้
+  const showAll =
+    payload?.role === "admin" && searchParams.get("all") === "true";
+
+  // Guest ต้องส่ง user_id มาเพื่อดึงข้อมูล
+  const guestUserId = searchParams.get("guest_user_id");
 
   try {
     let query: string;
     let params: unknown[];
 
     if (showAll) {
+      // Admin: ดูทั้งหมด (เฉพาะ active)
       query = `
-        SELECT cp.*,
-               u.fullname AS owner_fullname,
-               ST_AsGeoJSON(cp.geom)::json          AS geojson_data,
-               ST_AsGeoJSON(cp.boundary_geom)::json AS boundary_geojson_data
-        FROM carbon_projects cp
-        LEFT JOIN users u ON cp.user_id = u.id
-        ${filterName ? "WHERE cp.name = $1" : ""}
-        ORDER BY cp.updated_at DESC
-      `;
-      params = filterName ? [filterName] : [];
-    } else {
-      query = `
-        SELECT *,
-               ST_AsGeoJSON(geom)::json          AS geojson_data,
-               ST_AsGeoJSON(boundary_geom)::json AS boundary_geojson_data
+        SELECT *
         FROM carbon_projects
-        WHERE user_id = $1
-        ${filterName ? "AND name = $2" : ""}
+        WHERE status = 'active'
         ORDER BY updated_at DESC
       `;
-      params = filterName ? [payload.userId, filterName] : [payload.userId];
+      params = [];
+    } else if (payload) {
+      // ผู้ใช้ที่ล็อกอิน: ดึง username จาก DB แล้วค้นหา
+      const userIdentifier = await getUserIdentifier(payload);
+      query = `
+        SELECT *
+        FROM carbon_projects
+        WHERE user_id = $1 AND status = 'active'
+        ORDER BY updated_at DESC
+      `;
+      params = [userIdentifier];
+    } else if (guestUserId) {
+      // Guest: ดูเฉพาะ guest_user_id ที่ส่งมา
+      query = `
+        SELECT *
+        FROM carbon_projects
+        WHERE user_id = $1 AND status = 'active'
+        ORDER BY updated_at DESC
+      `;
+      params = [guestUserId];
+    } else {
+      return NextResponse.json({ plots: [] });
     }
 
     const result = await pool.query(query, params);
-    const plots = result.rows.map((row) => {
-      const p = rowToPlot(row);
-      if (showAll && row.owner_fullname && !p.ownerName) {
-        p.ownerName = row.owner_fullname;
+    
+    // Flatten frontend_plots from all projects into a single array of plots
+    const plots = result.rows.flatMap(row => {
+      const p = row.frontend_plots;
+      if (Array.isArray(p)) {
+        return p.map(plot => ({ ...plot, dbProjectId: row.id }));
       }
-      return p;
+      return [];
     });
 
     return NextResponse.json({ plots });
   } catch (err) {
     console.error("GET /api/plots error:", err);
-    return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
+    return NextResponse.json(
+      { error: "Internal Server Error" },
+      { status: 500 }
+    );
   }
 }
 
-/** POST /api/plots — upsert one or many plots (body: { plots: Plot[] }) */
+// ---------------------------------------------------------------------------
+// POST /api/plots — สร้าง project ใหม่ + บันทึก history (CREATE)
+// ---------------------------------------------------------------------------
 export async function POST(request: NextRequest) {
   const token = request.cookies.get(AUTH_COOKIE)?.value;
-  if (!token) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  const payload = verifyToken(token);
-  if (!payload) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const payload = token ? verifyToken(token) : null;
 
   try {
     const body = await request.json();
-    const plots: any[] = Array.isArray(body.plots)
-      ? body.plots
-      : body.plot
-      ? [body.plot]
-      : [];
 
-    if (plots.length === 0) {
-      return NextResponse.json({ error: "No plots provided" }, { status: 400 });
+    // กำหนด user_id
+    let userId: string;
+    if (payload) {
+      userId = await getUserIdentifier(payload);
+    } else if (body.userId) {
+      userId = body.userId;
+    } else {
+      userId = generateGuestUserId();
     }
+
+    // กำหนด project_id
+    let projectId: string;
+    if (payload && body.projectId) {
+      projectId = body.projectId;
+    } else if (body.projectId) {
+      projectId = body.projectId;
+    } else {
+      projectId = generateGuestProjectId();
+    }
+
+    const plantationInfo = body.plantationInfo ?? {};
+    const polygonsPayload = body.polygonsPayload ?? [];
+    const backendResponses = body.backendResponses ?? [];
+    const frontendPlots = body.frontendPlots ?? [];
 
     const client = await pool.connect();
     try {
       await client.query("BEGIN");
-      for (const plot of plots) {
-        await client.query(
-          `INSERT INTO carbon_projects (
-             id, user_id, name, area_rai, carbon_total, rubber_age,
-             plant_year_be, trees, variety, spacing, owner_name, province,
-             plant_status, processed, lu_checked, forecast, carbon_profile,
-             backend_data, geom, boundary_geom
-           ) VALUES (
-             $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14,
-             $15, $16, $17, $18,
-             CASE WHEN $19::text IS NOT NULL THEN ST_SetSRID(ST_GeomFromGeoJSON($19::text), 4326) ELSE NULL END,
-             CASE WHEN $20::text IS NOT NULL THEN ST_SetSRID(ST_GeomFromGeoJSON($20::text), 4326) ELSE NULL END
-           )
-           ON CONFLICT (id) DO UPDATE SET
-             name           = EXCLUDED.name,
-             area_rai       = EXCLUDED.area_rai,
-             carbon_total   = EXCLUDED.carbon_total,
-             rubber_age     = EXCLUDED.rubber_age,
-             plant_year_be  = EXCLUDED.plant_year_be,
-             trees          = EXCLUDED.trees,
-             variety        = EXCLUDED.variety,
-             spacing        = EXCLUDED.spacing,
-             owner_name     = EXCLUDED.owner_name,
-             province       = EXCLUDED.province,
-             plant_status   = EXCLUDED.plant_status,
-             processed      = EXCLUDED.processed,
-             lu_checked     = EXCLUDED.lu_checked,
-             forecast       = EXCLUDED.forecast,
-             carbon_profile = EXCLUDED.carbon_profile,
-             backend_data   = EXCLUDED.backend_data,
-             geom           = EXCLUDED.geom,
-             boundary_geom  = EXCLUDED.boundary_geom,
-             updated_at     = NOW()`,
+
+      // Check if project already exists
+      const existing = await client.query(
+        `SELECT id FROM carbon_projects WHERE user_id = $1 AND project_id = $2 AND status = 'active'`,
+        [userId, projectId]
+      );
+
+      let savedRow;
+
+      if ((existing.rowCount ?? 0) > 0) {
+        // Update existing record
+        const updateResult = await client.query(
+          `UPDATE carbon_projects
+           SET plantation_info = $1, polygons_payload = $2, backend_responses = $3, frontend_plots = $4, updated_at = NOW()
+           WHERE id = $5
+           RETURNING *`,
           [
-            plot.id,
-            payload.userId,
-            plot.name ?? "",
-            plot.areaRai ?? 0,
-            plot.carbonTotal ?? 0,
-            plot.rubberAge ?? 0,
-            plot.plantYearBE ?? null,
-            plot.trees ?? null,
-            plot.variety ?? null,
-            plot.spacing ?? null,
-            plot.ownerName ?? null,
-            plot.province ?? null,
-            plot.plantStatus ?? null,
-            plot.processed ?? false,
-            plot.luChecked ? JSON.stringify(plot.luChecked) : null,
-            plot.forecast ? JSON.stringify(plot.forecast) : null,
-            plot.carbonProfile ? JSON.stringify(plot.carbonProfile) : null,
-            plot.backendData || plot.selectedAreaRai !== undefined ? JSON.stringify({ ...(plot.backendData || {}), selectedAreaRai: plot.selectedAreaRai }) : null,
-            plot.geojson ? JSON.stringify(plot.geojson) : null,
-            plot.boundaryGeojson ? JSON.stringify(plot.boundaryGeojson) : null,
+            JSON.stringify(plantationInfo),
+            JSON.stringify(polygonsPayload),
+            JSON.stringify(backendResponses),
+            JSON.stringify(frontendPlots),
+            existing.rows[0].id
           ]
         );
+        savedRow = updateResult.rows[0];
+      } else {
+        // Insert new record
+        const insertResult = await client.query(
+          `INSERT INTO carbon_projects
+             (user_id, project_id, plantation_info, polygons_payload, backend_responses, frontend_plots)
+           VALUES ($1, $2, $3, $4, $5, $6)
+           RETURNING *`,
+          [
+            userId,
+            projectId,
+            JSON.stringify(plantationInfo),
+            JSON.stringify(polygonsPayload),
+            JSON.stringify(backendResponses),
+            JSON.stringify(frontendPlots),
+          ]
+        );
+        savedRow = insertResult.rows[0];
       }
+
       await client.query("COMMIT");
+
+      return NextResponse.json({
+        success: true,
+        project: rowToProject(savedRow),
+      });
     } catch (err) {
       await client.query("ROLLBACK");
       throw err;
     } finally {
       client.release();
     }
-
-    return NextResponse.json({ success: true, count: plots.length });
   } catch (err) {
     console.error("POST /api/plots error:", err);
-    return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
+    return NextResponse.json(
+      { error: "Internal Server Error" },
+      { status: 500 }
+    );
   }
 }
 
-/** DELETE /api/plots — ลบทุกแปลงของ user ปัจจุบัน */
+// ---------------------------------------------------------------------------
+// DELETE /api/plots — Soft Delete ทุก project ของ user ปัจจุบัน
+//   ไม่ลบจริง → เปลี่ยน status = 'deleted' + ตั้ง deleted_at
+// ---------------------------------------------------------------------------
 export async function DELETE(request: NextRequest) {
   const token = request.cookies.get(AUTH_COOKIE)?.value;
-  if (!token) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  const payload = verifyToken(token);
-  if (!payload) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const payload = token ? verifyToken(token) : null;
 
+  // Guest ต้องส่ง user_id มาทาง query string
+  const { searchParams } = new URL(request.url);
+  const guestUserId = searchParams.get("guest_user_id");
+
+  const userId = payload
+    ? await getUserIdentifier(payload)
+    : guestUserId;
+
+  if (!userId) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const client = await pool.connect();
   try {
-    await pool.query("DELETE FROM carbon_projects WHERE user_id = $1", [payload.userId]);
-    return NextResponse.json({ success: true });
+    await client.query("BEGIN");
+
+    // ดึงข้อมูลเดิมก่อน soft delete
+    const existing = await client.query(
+      `SELECT * FROM carbon_projects WHERE user_id = $1 AND status = 'active'`,
+      [userId]
+    );
+
+    // Soft Delete
+    await client.query(
+      `UPDATE carbon_projects
+       SET status = 'deleted', deleted_at = NOW(), updated_at = NOW()
+       WHERE user_id = $1 AND status = 'active'`,
+      [userId]
+    );
+
+
+
+    await client.query("COMMIT");
+    return NextResponse.json({
+      success: true,
+      deletedCount: existing.rowCount,
+    });
   } catch (err) {
+    await client.query("ROLLBACK");
     console.error("DELETE /api/plots error:", err);
-    return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
+    return NextResponse.json(
+      { error: "Internal Server Error" },
+      { status: 500 }
+    );
+  } finally {
+    client.release();
   }
 }

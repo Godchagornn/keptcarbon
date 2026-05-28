@@ -97,6 +97,7 @@ function MapDrawContent() {
   const [searchErr, setSearchErr] = useState<string | null>(null);
   const [errorPopup, setErrorPopup] = useState<{ title: string; desc: string; } | null>(null);
   const [searchTruncated, setSearchTruncated] = useState(false);
+  const [rawPlantationInfo, setRawPlantationInfo] = useState<any[]>([]);
   const [parcelFeatures, setParcelFeatures] = useState<GeoJSON.Feature[]>([]);
   const [dragOver, setDragOver] = useState(false);
 
@@ -126,6 +127,8 @@ function MapDrawContent() {
   const [plotsSaved, setPlotsSaved] = useState(false);
 
   const [hiddenProjectPlots, setHiddenProjectPlots] = useState<GeoJSON.Feature[]>([]);
+  const [existingProjectPlots, setExistingProjectPlots] = useState<any[]>([]);
+  const [editingPlotId, setEditingPlotId] = useState<string | null>(null);
   const [autoProcessTrigger, setAutoProcessTrigger] = useState(0);
 
   const [existingProjectNames, setExistingProjectNames] = useState<Set<string>>(new Set());
@@ -798,7 +801,7 @@ function MapDrawContent() {
       pixelRatio: Math.min(typeof window !== "undefined" ? window.devicePixelRatio || 1 : 1, 2),
       style: {
         version: 8,
-        glyphs: "https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf",
+        glyphs: "https://fonts.openmaptiles.org/{fontstack}/{range}.pbf",
         sources: {
           sat: {
             type: "raster",
@@ -1204,16 +1207,28 @@ function MapDrawContent() {
               if (editedPlot) {
                 visibleFeats = [editedPlot];
                 hiddenFeats = feats.filter(f => (f.properties as any).id !== (editedPlot as GeoJSON.Feature).properties?.id);
+                // Store original project plots so save can merge only the edited one
+                const rawPlots = allProjectPlots.map(({ dbProjectId: _ignore, ...rest }: any) => rest);
+                setExistingProjectPlots(rawPlots);
+                setEditingPlotId(plotId);
               } else {
                 // plotId specified but no match found — show only first plot to avoid showing all
                 console.warn("[AUTO-LOAD] plotId not found in project plots, showing first plot. plotId:", plotId, "available ids:", feats.map(f => (f.properties as any).id));
                 visibleFeats = feats.slice(0, 1);
                 hiddenFeats = feats.slice(1);
+                const rawPlots = allProjectPlots.map(({ dbProjectId: _ignore, ...rest }: any) => rest);
+                setExistingProjectPlots(rawPlots);
+                const firstId = (feats[0]?.properties as any)?.id ?? null;
+                setEditingPlotId(firstId);
               }
             }
 
-            console.log("[AUTO-LOAD] Setting drawnParcels and parcelFeatures to feats:", visibleFeats);
             setDrawnParcels(visibleFeats);
+
+            const hasExistingLuData = visibleFeats.some(f => {
+              const luPolys = (f.properties as any)?.backendData?.lu_polygon;
+              return Array.isArray(luPolys) && luPolys.length > 0;
+            });
 
             const initialParcelFeatures: GeoJSON.Feature[] = [];
             visibleFeats.forEach(f => {
@@ -1224,9 +1239,23 @@ function MapDrawContent() {
                 initialParcelFeatures.push(f);
               }
             });
+
+            if (hasExistingLuData) {
+              // Restore per-plot LU checked state from saved data so fills render immediately
+              const initialChecked: Record<number, Record<string, boolean>> = {};
+              visibleFeats.forEach((f, idx) => {
+                const saved = (f.properties as any)?.luChecked;
+                initialChecked[idx] = (saved && typeof saved === 'object' && !Array.isArray(saved))
+                  ? saved
+                  : { A: true, A302: true };
+              });
+              allPlotsCheckedRef.current = initialChecked;
+            } else {
+              needsPlantationSearchRef.current = true;
+            }
+
             setParcelFeatures(initialParcelFeatures);
             setHiddenProjectPlots(hiddenFeats);
-            needsPlantationSearchRef.current = true;
             setSearchCount(visibleFeats.length);
             if (projectPlots[0].boundaryGeojson) {
               setDrawnGeometry(projectPlots[0].boundaryGeojson as GeoJSON.Geometry);
@@ -1236,7 +1265,9 @@ function MapDrawContent() {
 
             const map = mapRef.current;
             if (map && map.getSource("matched-parcels")) {
-              (map.getSource("matched-parcels") as maplibregl.GeoJSONSource).setData({ type: "FeatureCollection", features: visibleFeats });
+              // Use LU features (with lu_class) when cached data exists, else plot boundaries
+              const sourceFeats = hasExistingLuData ? initialParcelFeatures : visibleFeats;
+              (map.getSource("matched-parcels") as maplibregl.GeoJSONSource).setData({ type: "FeatureCollection", features: sourceFeats });
 
               const bounds = new maplibregl.LngLatBounds();
               visibleFeats.forEach(f => {
@@ -1777,6 +1808,7 @@ function MapDrawContent() {
     try {
       const allFeatures: GeoJSON.Feature[] = [];
       const allLUStats: { lu_class: string; area_percent: number }[] = [];
+      const allRawPlantationInfo: any[] = [];
 
       // Send one request per parcel — avoids 500 errors from combined MultiPolygon
       // and ensures each parcel's LU data is assigned directly by index
@@ -1791,6 +1823,8 @@ function MapDrawContent() {
             output_crs: "EPSG:4326",
           });
           console.log(`[KeptCarbon] plantation-info parcel ${pi}:`, JSON.stringify(result, null, 2));
+          allRawPlantationInfo.push(result);
+          
           const luPolygons = result.lu_polygon ?? [];
           if (luPolygons.length > 0) {
             luPolygons.forEach(lu => {
@@ -1879,8 +1913,19 @@ function MapDrawContent() {
               area_percent: null,
             },
           });
+          
+          allRawPlantationInfo.push({
+            polygon_id: `parcel-${pi}-${Date.now()}`,
+            province_code: "",
+            geometry: sanitizePolygonForApi(parcel.geometry),
+            area_m2: polygonAreaM2((parcel.geometry as any).coordinates[0] as any),
+            status: { status: "error", status_code: sc, message: backendMessage },
+            lu_polygon: []
+          });
         }
       }
+
+      setRawPlantationInfo(allRawPlantationInfo);
 
       const map = mapRef.current;
       if (map && mapLoadedRef.current) {
@@ -1938,7 +1983,6 @@ function MapDrawContent() {
           title: "ไม่สามารถดำเนินการได้",
           desc: errorMsg
         });
-        clearDraw();
       } else if (errorMsg === "ไม่พบข้อมูลปีปลูกในฐานข้อมูล กรุณาระบุปีปลูก (พ.ศ.) ในช่องกรอกข้อมูล") {
         setErrorPopup({
           title: "แจ้งเตือนข้อมูล",
@@ -2768,6 +2812,7 @@ function MapDrawContent() {
                 searchTruncated={searchTruncated}
                 parcelFeatures={drawnParcels}
                 luFeatures={parcelFeatures}
+                rawPlantationInfo={rawPlantationInfo}
                 userDisplayName={user?.fullname ?? ""}
                 drawnGeometry={drawnGeometry}
                 onFlyTo={flyToFeature}
@@ -2788,6 +2833,8 @@ function MapDrawContent() {
                 projectName={projectName}
                 autoProcessTrigger={autoProcessTrigger}
                 onSave={() => setPlotsSaved(true)}
+                existingProjectPlots={existingProjectPlots}
+                editingPlotId={editingPlotId}
                 onBeforeProcess={() => {
                   if (hiddenProjectPlots.length > 0) {
                     const merged = [...drawnParcels, ...hiddenProjectPlots];
@@ -2820,10 +2867,13 @@ function MapDrawContent() {
                     });
                     setParcelFeatures(allLuFeats);
                     setHiddenProjectPlots([]);
+                    // After merge, all plots are in parcelFeatures — disable single-plot edit mode
+                    setExistingProjectPlots([]);
+                    setEditingPlotId(null);
 
                     const map = mapRef.current;
                     if (map && map.getSource("matched-parcels")) {
-                      (map.getSource("matched-parcels") as maplibregl.GeoJSONSource).setData({ type: "FeatureCollection", features: merged });
+                      (map.getSource("matched-parcels") as maplibregl.GeoJSONSource).setData({ type: "FeatureCollection", features: allLuFeats });
                       const bounds = new maplibregl.LngLatBounds();
                       merged.forEach(f => {
                         if (f.geometry.type === 'Polygon') {

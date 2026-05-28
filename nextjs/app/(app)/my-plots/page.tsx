@@ -49,6 +49,7 @@ function getLuShortLabel(luClass: string, descTh?: string): string {
 
 type SavedPlot = {
   id: string;
+  dbProjectId?: number;
   name: string;
   areaRai: number;
   selectedAreaRai?: number;
@@ -119,7 +120,7 @@ function PlotsMapView({ plots, isMobile }: { plots: SavedPlot[], isMobile: boole
       container: mapContainerRef.current,
       style: {
         version: 8,
-        glyphs: "https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf",
+        glyphs: "https://fonts.openmaptiles.org/{fontstack}/{range}.pbf",
         sources: {
           sat: {
             type: "raster",
@@ -741,7 +742,7 @@ function PlotMiniMap({ plot, isMobile, index }: { plot: SavedPlot; isMobile: boo
       container: mapContainerRef.current,
       style: {
         version: 8,
-        glyphs: "https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf",
+        glyphs: "https://fonts.openmaptiles.org/{fontstack}/{range}.pbf",
         sources: {
           sat: { type: "raster", tiles: ["https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}"], tileSize: 256, maxzoom: 18 }
         },
@@ -1607,8 +1608,33 @@ export default function MyPlotsPage() {
 
   const handleDelete = (id: string) => {
     if (!user) return;
-    setPlots(prev => prev.filter(p => p.id !== id));
-    fetch(`/api/plots/${id}`, { method: "DELETE" }).catch(console.error);
+    
+    // Find the plot to get its dbProjectId
+    const plotToDelete = plots.find(p => p.id === id);
+    if (!plotToDelete || !plotToDelete.dbProjectId) {
+        setPlots(prev => prev.filter(p => p.id !== id));
+        return;
+    }
+
+    const remainingPlots = plots.filter(p => p.id !== id);
+    setPlots(remainingPlots);
+    
+    const remainingInProject = remainingPlots.filter(p => p.dbProjectId === plotToDelete.dbProjectId);
+    
+    if (remainingInProject.length === 0) {
+        // If this was the last plot in the project, soft-delete the entire project row
+        fetch(`/api/plots/${plotToDelete.dbProjectId}`, { 
+            method: "DELETE" 
+        }).catch(console.error);
+    } else {
+        // We only update the frontendPlots array of the same project to hide it
+        // The plantation_info in the DB is untouched, fulfilling "want the deleted data to still remain"
+        fetch(`/api/plots/${plotToDelete.dbProjectId}`, { 
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ frontendPlots: remainingInProject })
+        }).catch(console.error);
+    }
   };
 
 
@@ -1816,12 +1842,36 @@ export default function MyPlotsPage() {
       // Expand project to show graphs
       setExpandedProjects(prev => ({ ...prev, [projectName]: true }));
 
-      // Save to backend
-      await fetch(`/api/plots`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ plots: updatedPlots }),
-      });
+      // Save to backend using PATCH if dbProjectId is available
+      const dbProjectId = projectPlots[0]?.dbProjectId;
+      if (dbProjectId) {
+          const allPlotsForProject = plots.map(p => {
+              const up = updatedPlots.find(u => u.id === p.id);
+              return up ? up : p;
+          }).filter(p => p.dbProjectId === dbProjectId);
+
+          const plantationInfo: Record<string, any> = {};
+          allPlotsForProject.forEach(plot => {
+             plantationInfo[plot.id] = {
+                 polygon_id: plot.id,
+                 province_code: plot.province || "UNK",
+                 geometry: plot.geojson || plot.boundaryGeojson || null,
+                 form: plot.backendData?.form || {},
+                 lu_polygon: plot.backendData?.lu_polygon || []
+             };
+          });
+
+          await fetch(`/api/plots/${dbProjectId}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ 
+              frontendPlots: allPlotsForProject,
+              polygonsPayload: polygons,
+              backendResponses: responses,
+              plantationInfo: plantationInfo
+            }),
+          });
+      }
 
     } catch (err) {
       console.error("Inline estimate error:", err);
@@ -1835,28 +1885,71 @@ export default function MyPlotsPage() {
 
   const handleUpdatePlot = (updated: SavedPlot) => {
     if (!user) return;
-    setPlots(prev => prev.map(p => p.id === updated.id ? updated : p));
-    fetch(`/api/plots/${updated.id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        name: updated.name,
-        variety: updated.variety,
-        spacing: updated.spacing,
-        trees: updated.trees,
-        plantStatus: updated.plantStatus,
-        ownerName: updated.ownerName,
-        province: updated.province,
-        plantYearBE: updated.plantYearBE,
-        backendData: updated.backendData,
-        // Persist carbon reset state so it survives page reload
-        processed: updated.processed ?? false,
-        carbonTotal: updated.carbonTotal ?? 0,
-        rubberAge: updated.rubberAge ?? 0,
-        carbonProfile: updated.carbonProfile ?? null,
-        forecast: updated.forecast ?? null,
-      }),
-    }).catch(console.error);
+    
+    const newPlots = plots.map(p => p.id === updated.id ? updated : p);
+    setPlots(newPlots);
+    
+    const dbProjectId = updated.dbProjectId;
+    if (dbProjectId) {
+        const allPlotsForProject = newPlots.filter(p => p.dbProjectId === dbProjectId);
+        
+        const plantationInfo: Record<string, any> = {};
+        allPlotsForProject.forEach(plot => {
+           plantationInfo[plot.id] = {
+               polygon_id: plot.id,
+               province_code: plot.province || "UNK",
+               geometry: plot.geojson || plot.boundaryGeojson || null,
+               form: plot.backendData?.form || {},
+               lu_polygon: plot.backendData?.lu_polygon || []
+           };
+        });
+
+        const polygonsPayload = allPlotsForProject.map((plot) => {
+          let geom = plot.geojson as GeoJSON.Geometry;
+          if (!geom && plot.boundaryGeojson) {
+            geom = plot.boundaryGeojson as GeoJSON.Geometry;
+          }
+          const luFeatures = plot.backendData?.lu_polygon || [];
+          const luChecked = plot.luChecked || { A: true, A302: true };
+          let combinedGeom = geom;
+          if (luFeatures.length > 0) {
+            const allRings: GeoJSON.Position[][][] = [];
+            for (const feat of luFeatures) {
+              const code = (feat as any).properties?.lu_class as string | undefined;
+              const P = code ? code.charAt(0).toUpperCase() : "";
+              if (!code || luChecked[code] || luChecked[P] || code === "A302") {
+                const fGeom = feat.geometry as GeoJSON.Polygon | GeoJSON.MultiPolygon;
+                if (fGeom.type === "Polygon") allRings.push(fGeom.coordinates);
+                else if (fGeom.type === "MultiPolygon") allRings.push(...fGeom.coordinates);
+              }
+            }
+            if (allRings.length > 0) {
+              combinedGeom = allRings.length === 1 ? { type: "Polygon", coordinates: allRings[0] } : { type: "MultiPolygon", coordinates: allRings };
+            }
+          }
+          const userYearBE = plot.backendData?.form?.plantYear ? parseInt(plot.backendData.form.plantYear) : 0;
+          return {
+            id: plot.id,
+            geometry: combinedGeom,
+            year_of_planting: userYearBE > 0 ? userYearBE - 543 : null,
+            rubber_clone: plot.backendData?.form?.variety || null,
+            tree_count: plot.backendData?.form?.treeCount ? parseInt(plot.backendData.form.treeCount) : null,
+            spacing_system: plot.backendData?.form?.spacing || null,
+            selected_lu_classes: Object.entries(plot.luChecked || {}).filter(([_, on]) => on).map(([cls]) => cls),
+            project_type: (plot.plantStatus as "replanting" | "existing") || undefined,
+          };
+        });
+
+        fetch(`/api/plots/${dbProjectId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ 
+            frontendPlots: allPlotsForProject,
+            plantationInfo: plantationInfo,
+            polygonsPayload: polygonsPayload
+          })
+        }).catch(console.error);
+    }
     setEditingPlot(null);
   };
 
