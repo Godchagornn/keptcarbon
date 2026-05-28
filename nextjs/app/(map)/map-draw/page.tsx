@@ -1651,11 +1651,11 @@ function MapDrawContent() {
           const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&countrycodes=th&limit=1&q=${encodeURIComponent("จังหวัด" + selectedProvince)}`);
           const data = await res.json();
           if (data && data.length > 0) {
-            map.flyTo({ 
-              center: [parseFloat(data[0].lon), parseFloat(data[0].lat)], 
-              zoom: 10, 
-              pitch: 0, 
-              bearing: 0, 
+            map.flyTo({
+              center: [parseFloat(data[0].lon), parseFloat(data[0].lat)],
+              zoom: 10,
+              pitch: 0,
+              bearing: 0,
               duration: 3000,
               essential: true,
               curve: 1.42
@@ -1667,11 +1667,11 @@ function MapDrawContent() {
         setSearchLoading(false);
       } else if (map.getZoom() < 10) {
         // Default to the center of Rayong province
-        map.flyTo({ 
-          center: [101.35, 12.80], 
-          zoom: 9.5, 
-          pitch: 0, 
-          bearing: 0, 
+        map.flyTo({
+          center: [101.35, 12.80],
+          zoom: 9.5,
+          pitch: 0,
+          bearing: 0,
           duration: 3000,
           essential: true,
           curve: 1.42
@@ -1824,7 +1824,7 @@ function MapDrawContent() {
           });
           console.log(`[KeptCarbon] plantation-info parcel ${pi}:`, JSON.stringify(result, null, 2));
           allRawPlantationInfo.push(result);
-          
+
           const luPolygons = result.lu_polygon ?? [];
           if (luPolygons.length > 0) {
             luPolygons.forEach(lu => {
@@ -1913,7 +1913,7 @@ function MapDrawContent() {
               area_percent: null,
             },
           });
-          
+
           allRawPlantationInfo.push({
             polygon_id: `parcel-${pi}-${Date.now()}`,
             province_code: "",
@@ -2567,7 +2567,7 @@ function MapDrawContent() {
                         </div>
                         {(!selectedRegion || !selectedProvince) && (
                           <div style={{ color: "#f59e0b", fontSize: 12, marginTop: 0, fontWeight: 600, display: "flex", alignItems: "center", gap: 4 }}>
-                            <i className="bi bi-exclamation-circle-fill" /> กรุณาเลือกภูมิภาคและจังหวัดเพื่อดำเนินการต่อ
+                            <i className="bi bi-exclamation-circle-fill" /> กรุณาเลือกภูมิภาคพื่อดำเนินการต่อ
                           </div>
                         )}
                       </div>
