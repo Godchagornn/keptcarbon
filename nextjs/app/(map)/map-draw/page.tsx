@@ -34,6 +34,7 @@ function MapDrawContent() {
 
   const [selectedRegion, setSelectedRegion] = useState("");
   const [selectedProvince, setSelectedProvince] = useState("");
+  const boundaryAnimRef = useRef<number>(0);
 
   useEffect(() => {
     document.body.classList.add("map-draw-active");
@@ -239,6 +240,22 @@ function MapDrawContent() {
       }
     }
   }, [drawnParcels, getVertFeatures]);
+
+  // Update province boundary to show only the selected province
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !mapLoadedRef.current) return;
+    const src = map.getSource("province-boundary") as maplibregl.GeoJSONSource | undefined;
+    if (!src) return;
+    if (!selectedProvince) {
+      src.setData({ type: "FeatureCollection", features: [] });
+      return;
+    }
+    fetch(`/api/geojson/boundary?province=${encodeURIComponent(selectedProvince)}`)
+      .then(r => r.json())
+      .then(fc => src.setData(fc))
+      .catch(console.error);
+  }, [selectedProvince, mapLoaded]);
 
   // Hide vertex nodes when not on step 1 (not editable at step 2/3)
   useEffect(() => {
@@ -863,35 +880,54 @@ function MapDrawContent() {
       mapLoadedRef.current = true;
       setMapLoaded(true);
 
-      // ── Rayong Province Boundary ──────────────────────────────────────────
-      map.addSource("rayong-boundary", {
+      // ── Province Boundaries ───────────────────────────────────────────────
+      map.addSource("province-boundary", {
         type: "geojson",
-        data: "/api/geojson/boundary",
+        data: { type: "FeatureCollection", features: [] },
       });
-      // Glow / halo layer (wider, semi-transparent)
+      // Glow — expands as you zoom in
       map.addLayer({
-        id: "rayong-boundary-glow",
+        id: "province-boundary-glow",
         type: "line",
-        source: "rayong-boundary",
+        source: "province-boundary",
         paint: {
-          "line-color": "#0a43ffff",
-          "line-width": 8,
-          "line-opacity": 0.25,
-          "line-blur": 4,
+          "line-color": "#f97316",
+          "line-width": ["interpolate", ["linear"], ["zoom"], 6, 6, 10, 12, 14, 20],
+          "line-opacity": ["interpolate", ["linear"], ["zoom"], 6, 0.15, 14, 0.3],
+          "line-blur":    ["interpolate", ["linear"], ["zoom"], 6, 3,  14, 10],
         },
       });
-      // Main deep-pink line
+      // Main animated flowing line — thickens on zoom
       map.addLayer({
-        id: "rayong-boundary-line",
+        id: "province-boundary-line",
         type: "line",
-        source: "rayong-boundary",
+        source: "province-boundary",
         paint: {
-          "line-color": "#1845c2ff",
-          "line-width": 2.5,
+          "line-color": "#f97316",
+          "line-width": ["interpolate", ["linear"], ["zoom"], 6, 1.5, 10, 2.5, 14, 5],
           "line-opacity": 0.95,
-          "line-dasharray": [6, 3],
+          "line-dasharray": [0, 4, 3],
         },
       });
+      // Start flowing-dash animation (~12 fps)
+      {
+        const frames = [
+          [0,4,3],[0.5,4,2.5],[1,4,2],[1.5,4,1.5],[2,4,1],[2.5,4,0.5],[3,4,0],
+          [0,0.5,3,3.5],[0,1,3,3],[0,1.5,3,2.5],[0,2,3,2],[0,2.5,3,1.5],[0,3,3,1],[0,3.5,3,0.5],
+        ];
+        let step = 0, last = 0;
+        const tick = (t: number) => {
+          if (t - last > 80) {
+            step = (step + 1) % frames.length;
+            if (map.getLayer("province-boundary-line")) {
+              map.setPaintProperty("province-boundary-line", "line-dasharray", frames[step]);
+            }
+            last = t;
+          }
+          boundaryAnimRef.current = requestAnimationFrame(tick);
+        };
+        boundaryAnimRef.current = requestAnimationFrame(tick);
+      }
       // ─────────────────────────────────────────────────────────────────────
 
       map.addSource("draw-line", { type: "geojson", data: emptyFC() });
@@ -1145,6 +1181,7 @@ function MapDrawContent() {
     });
 
     return () => {
+      cancelAnimationFrame(boundaryAnimRef.current);
       map.remove();
       mapRef.current = null;
       mapLoadedRef.current = false;
@@ -1648,25 +1685,32 @@ function MapDrawContent() {
       if (selectedProvince) {
         setSearchLoading(true);
         try {
-          const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&countrycodes=th&limit=1&q=${encodeURIComponent("จังหวัด" + selectedProvince)}`);
-          const data = await res.json();
-          if (data && data.length > 0) {
-            map.flyTo({
-              center: [parseFloat(data[0].lon), parseFloat(data[0].lat)],
-              zoom: 10,
-              pitch: 0,
-              bearing: 0,
-              duration: 3000,
-              essential: true,
-              curve: 1.42
-            });
+          const res = await fetch(`/api/geojson/boundary?province=${encodeURIComponent(selectedProvince)}`);
+          const fc = await res.json();
+          if (fc?.features?.length > 0) {
+            const geom = fc.features[0].geometry as GeoJSON.MultiPolygon | GeoJSON.Polygon;
+            let minLng = Infinity, minLat = Infinity, maxLng = -Infinity, maxLat = -Infinity;
+            const walk = (coords: number[]) => {
+              if (typeof coords[0] === "number") {
+                if (coords[0] < minLng) minLng = coords[0];
+                if (coords[0] > maxLng) maxLng = coords[0];
+                if (coords[1] < minLat) minLat = coords[1];
+                if (coords[1] > maxLat) maxLat = coords[1];
+              } else {
+                (coords as unknown as number[][]).forEach(walk);
+              }
+            };
+            walk(geom.coordinates as unknown as number[]);
+            map.fitBounds(
+              [[minLng, minLat], [maxLng, maxLat]],
+              { padding: 60, duration: 2500, pitch: 0, bearing: 0, essential: true }
+            );
           }
         } catch (err) {
           console.error(err);
         }
         setSearchLoading(false);
       } else if (map.getZoom() < 10) {
-        // Default to the center of Rayong province
         map.flyTo({
           center: [101.35, 12.80],
           zoom: 9.5,

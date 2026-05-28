@@ -955,14 +955,12 @@ function PlotMiniMap({ plot, isMobile, index }: { plot: SavedPlot; isMobile: boo
 }
 
 function ProjectCarbonSummary({ plots, isMobile }: { plots: SavedPlot[]; isMobile: boolean }) {
-  const [isExpanded, setIsExpanded] = useState(false);
   const currentYearBE = new Date().getFullYear() + 543;
 
-  const { combinedPts, totalNow, ciNow, showAggregateAge } = useMemo(() => {
+  const { combinedPts, totalNow, ciNow } = useMemo(() => {
     let fallbackTotal = 0;
     let fallbackLinearCi = 0;
 
-    // Pass 1: collect each plot's BarPoint array
     const allPtsArrays: BarPoint[][] = [];
     for (const plot of plots) {
       const isProcessed = plot.processed === true || (plot.carbonProfile && plot.carbonProfile.length > 0) || (plot.carbonTotal > 0);
@@ -985,21 +983,16 @@ function ProjectCarbonSummary({ plots, isMobile }: { plots: SavedPlot[]; isMobil
     }
 
     if (allPtsArrays.length === 0) {
-      return { combinedPts: [], totalNow: fallbackTotal, ciNow: fallbackLinearCi, showAggregateAge: false };
+      return { combinedPts: [], totalNow: fallbackTotal, ciNow: fallbackLinearCi };
     }
 
-    // Pass 2: find the common yearBE range: earliest start year → earliest end year.
-    // This allows Existing plots (e.g. 2569) to show before Replanting plots (e.g. 2570).
     const minEndYearBE = Math.min(...allPtsArrays.map(pts => pts[pts.length - 1].yearBE));
     const minStartYearBE = Math.min(...allPtsArrays.map(pts => pts[0].yearBE));
 
     const validYearBEs: number[] = [];
-    for (let y = minStartYearBE; y <= minEndYearBE; y++) {
-        validYearBEs.push(y);
-    }
+    for (let y = minStartYearBE; y <= minEndYearBE; y++) validYearBEs.push(y);
     const validYearBESet = new Set(validYearBEs);
 
-    // Pass 3: sum contributions from all plots, only for valid yearBEs
     const sumMap = new Map<number, { co2: number; sumLinearCi: number; totalValidAge: number; validAgeCount: number; fallbackAgeAccum: number; fallbackCount: number; }>();
     for (const yearBE of validYearBEs) {
       sumMap.set(yearBE, { co2: 0, sumLinearCi: 0, totalValidAge: 0, validAgeCount: 0, fallbackAgeAccum: 0, fallbackCount: 0 });
@@ -1011,13 +1004,8 @@ function ProjectCarbonSummary({ plots, isMobile }: { plots: SavedPlot[]; isMobil
         const e = sumMap.get(p.yearBE)!;
         e.co2 += Math.floor(p.co2 || 0);
         e.sumLinearCi = Math.round((e.sumLinearCi + Math.floor((p.ci || 0) * 10) / 10) * 10) / 10;
-        if (p.isAgeValid) {
-          e.totalValidAge += p.age;
-          e.validAgeCount += 1;
-        } else {
-          e.fallbackAgeAccum += p.age;
-          e.fallbackCount += 1;
-        }
+        if (p.isAgeValid) { e.totalValidAge += p.age; e.validAgeCount += 1; }
+        else { e.fallbackAgeAccum += p.age; e.fallbackCount += 1; }
       }
     }
 
@@ -1033,69 +1021,155 @@ function ProjectCarbonSummary({ plots, isMobile }: { plots: SavedPlot[]; isMobil
       };
     });
 
-    const showAggregateAge = plots.some(plot =>
-      (plot.plantYearBE && plot.plantYearBE > 0) || (plot.carbonProfile?.some(p => p.age != null) ?? false)
-    );
-
     const currentPt = combinedPts.length > 0 ? combinedPts[0] : null;
     return {
       combinedPts,
       totalNow: (currentPt?.co2 ?? 0) + fallbackTotal,
       ciNow: currentPt ? currentPt.ci : fallbackLinearCi,
-      showAggregateAge
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [plots]);
 
+  const processedCount = plots.filter(p =>
+    p.processed === true || (p.carbonProfile && p.carbonProfile.length > 0) || p.carbonTotal > 0
+  ).length;
+  const totalAreaRai = plots.reduce((s, p) => s + (p.selectedAreaRai || p.areaRai || 0), 0);
+  const totalTrees = plots.reduce((s, p) => s + (p.trees || 0), 0);
+  const yr5Pt = combinedPts.length > 5 ? combinedPts[5] : null;
+  const yr10Pt = combinedPts.length > 10 ? combinedPts[10] : null;
+
   if (combinedPts.length === 0 && totalNow === 0) return null;
+
+  const StatCard = ({ icon, iconColor, label, value, unit, valueColor }: { icon: string; iconColor: string; label: string; value: string; unit: string; valueColor: string }) => (
+    <div style={{ background: "rgba(255,255,255,0.75)", borderRadius: 12, padding: isMobile ? "10px 12px" : "12px 14px", border: "1px solid rgba(16,185,129,0.12)", backdropFilter: "blur(4px)" }}>
+      <div style={{ fontSize: 11, color: "#64748b", fontWeight: 600, marginBottom: 5, display: "flex", alignItems: "center", gap: 4 }}>
+        <i className={`bi ${icon}`} style={{ color: iconColor, fontSize: 11 }} /> {label}
+      </div>
+      <div style={{ display: "flex", alignItems: "baseline", gap: 3 }}>
+        <span style={{ fontSize: isMobile ? 18 : 20, fontWeight: 800, color: valueColor, lineHeight: 1 }}>{value}</span>
+        <span style={{ fontSize: 11, color: "#94a3b8", fontWeight: 500 }}>{unit}</span>
+      </div>
+    </div>
+  );
 
   return (
     <div style={{
       background: "#fff",
-      borderRadius: 16, border: "1px solid #e2e8f0",
-      padding: isMobile ? "16px" : "20px",
+      borderRadius: 20,
+      border: "1px solid rgba(16,185,129,0.18)",
+      overflow: "hidden",
       marginBottom: 20,
-      boxShadow: "0 4px 12px rgba(0,0,0,0.02)"
+      boxShadow: "0 8px 32px rgba(0,0,0,0.05)"
     }}>
-      {/* Top Summary Box (Clickable for toggle) */}
-      <div
-        onClick={() => combinedPts.length > 0 && setIsExpanded(!isExpanded)}
-        style={{
-          background: "linear-gradient(to right, rgba(13,148,136,0.08), rgba(20,184,166,0.03))",
-          border: "1px solid rgba(13,148,136,0.2)",
-          borderRadius: 12,
-          padding: "16px",
+      <div style={{
+        display: "grid",
+        gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr",
+      }}>
+
+        {/* Left: Chart Panel */}
+        <div style={{
+          padding: isMobile ? "16px" : "20px 24px",
           display: "flex",
           flexDirection: "column",
           justifyContent: "center",
-          alignItems: "center",
-          position: "relative",
-          cursor: combinedPts.length > 0 ? "pointer" : "default",
-          marginBottom: (isExpanded && combinedPts.length > 0) ? 16 : 0,
-          transition: "margin-bottom 0.2s ease"
-        }}
-      >
-        {combinedPts.length > 0 && (
-          <div style={{ position: "absolute", right: 16, top: "50%", transform: "translateY(-50%)" }}>
-            <i className={`bi bi-chevron-${isExpanded ? 'up' : 'down'}`} style={{ color: "#0f766e", fontSize: 18 }} />
-          </div>
-        )}
-        <div style={{ fontSize: 13, color: "#0f766e", fontWeight: 700, marginBottom: 6, display: "flex", alignItems: "center", gap: 6 }}>
-          <i className="bi bi-cloud-arrow-down-fill" /> ปริมาณคาร์บอนสะสมรวม ณ ปีปัจจุบัน
+          background: "#fff",
+          minHeight: isMobile ? 260 : 320,
+          borderRight: isMobile ? "none" : "1px solid rgba(16,185,129,0.15)",
+          borderBottom: isMobile ? "1px solid rgba(16,185,129,0.15)" : "none",
+        }}>
+          {combinedPts.length > 0 ? (
+            <>
+              <div style={{ fontSize: 13, fontWeight: 700, color: "#064e3b", marginBottom: 4, display: "flex", alignItems: "center", gap: 6 }}>
+                <i className="bi bi-activity" style={{ color: "#10b981" }} /> แนวโน้มคาร์บอนสะสมรวม
+              </div>
+              <div style={{ fontSize: 11, color: "#94a3b8", marginBottom: 8 }}>ปริมาณคาร์บอนกักเก็บ (tCO₂eq)</div>
+              <CarbonBarChart pts={combinedPts} isMobile={true} narrowMode={false} showAge={false} title="" />
+            </>
+          ) : (
+            <div style={{ textAlign: "center", color: "#94a3b8", padding: "32px 20px" }}>
+              <i className="bi bi-bar-chart" style={{ fontSize: 40, display: "block", marginBottom: 10, color: "#cbd5e1" }} />
+              <div style={{ fontSize: 14, fontWeight: 700, color: "#64748b" }}>ยังไม่มีข้อมูลกราฟ</div>
+              <div style={{ fontSize: 12, marginTop: 6, lineHeight: 1.5 }}>ประมวลผลแปลงเพื่อดูแนวโน้มคาร์บอน</div>
+            </div>
+          )}
         </div>
-        <div style={{ fontWeight: 800, color: "#0d9488", fontSize: isMobile ? 24 : 28, lineHeight: 1.1 }}>
-          {Math.floor(totalNow).toLocaleString("th-TH")} <span style={{ fontSize: isMobile ? 18 : 20, color: "#0f766e" }}>± {(Math.floor(ciNow * 10) / 10).toLocaleString("th-TH", { minimumFractionDigits: 1, maximumFractionDigits: 1 })}</span> <span style={{ fontSize: 16, fontWeight: 600, opacity: 0.8 }}>tCO₂eq</span>
-        </div>
-      </div>
 
-      {/* Expanded Chart Area */}
-      {isExpanded && combinedPts.length > 0 && (
-        <div style={{ marginTop: 20, paddingTop: 20, borderTop: "1px dashed #e2e8f0", display: "flex", justifyContent: "center" }}>
-          <div style={{ width: "100%", maxWidth: 680, animation: "fadeIn 0.3s ease" }}>
-            <CarbonBarChart pts={combinedPts} isMobile={isMobile} narrowMode={!isMobile} showAge={false} title="ปริมาณคาร์บอนกักเก็บ (tCO₂eq)" />
+        {/* Right: Stats Panel */}
+        <div style={{
+          padding: isMobile ? "20px 18px" : "28px 28px",
+          background: "linear-gradient(145deg, #f0fdf4 0%, #dcfce7 60%, #d1fae5 100%)",
+          display: "flex",
+          flexDirection: "column",
+          gap: 16,
+          position: "relative",
+          overflow: "hidden",
+        }}>
+          {/* Background decoration */}
+          <div style={{ position: "absolute", top: -30, right: -30, width: 120, height: 120, background: "rgba(16,185,129,0.08)", borderRadius: "50%", pointerEvents: "none" }} />
+          <div style={{ position: "absolute", bottom: -20, left: -20, width: 80, height: 80, background: "rgba(5,150,105,0.06)", borderRadius: "50%", pointerEvents: "none" }} />
+
+          {/* Header */}
+          <div style={{ position: "relative", display: "flex", alignItems: "center", gap: 9 }}>
+            <div style={{ width: 34, height: 34, borderRadius: 10, background: "linear-gradient(135deg,#10b981,#047857)", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 4px 12px rgba(16,185,129,0.35)", flexShrink: 0 }}>
+              <i className="bi bi-bar-chart-fill" style={{ color: "#fff", fontSize: 15 }} />
+            </div>
+            <div>
+              <div style={{ fontSize: 14, fontWeight: 800, color: "#064e3b", lineHeight: 1.2 }}>สรุปภาพรวมโครงการ</div>
+              <div style={{ fontSize: 11, color: "#6b7280", fontWeight: 500 }}>ข้อมูลรวมทุกแปลงที่ประมวลผลแล้ว</div>
+            </div>
           </div>
+
+          {/* Main carbon metric */}
+          <div style={{
+            position: "relative",
+            background: "rgba(255,255,255,0.85)",
+            borderRadius: 16,
+            padding: isMobile ? "14px 16px" : "18px 20px",
+            border: "1px solid rgba(16,185,129,0.2)",
+            backdropFilter: "blur(8px)",
+            boxShadow: "0 2px 12px rgba(16,185,129,0.08)"
+          }}>
+            <div style={{ fontSize: 11, color: "#059669", fontWeight: 700, marginBottom: 6, display: "flex", alignItems: "center", gap: 5 }}>
+              <i className="bi bi-cloud-arrow-down-fill" style={{ fontSize: 12 }} />
+              ปริมาณคาร์บอนสะสมรวม ณ ปีปัจจุบัน
+            </div>
+            <div style={{ display: "flex", alignItems: "baseline", gap: 6, flexWrap: "wrap" }}>
+              <span style={{ fontWeight: 900, color: "#064e3b", fontSize: isMobile ? 28 : 34, lineHeight: 1 }}>
+                {Math.floor(totalNow).toLocaleString("th-TH")}
+              </span>
+              <span style={{ fontSize: isMobile ? 15 : 19, color: "#0f766e", fontWeight: 700 }}>
+                ± {(Math.floor(ciNow * 10) / 10).toLocaleString("th-TH", { minimumFractionDigits: 1, maximumFractionDigits: 1 })}
+              </span>
+              <span style={{ fontSize: 13, fontWeight: 600, color: "#6b7280" }}>tCO₂eq</span>
+            </div>
+          </div>
+
+          {/* 2×2 stat grid */}
+          <div style={{ position: "relative", display: "grid", gridTemplateColumns: "1fr 1fr", gap: isMobile ? 8 : 10 }}>
+            <StatCard icon="bi-check-circle-fill" iconColor="#10b981" label="ประมวลผลแล้ว" value={`${processedCount}/${plots.length}`} unit="แปลง" valueColor="#047857" />
+            <StatCard icon="bi-grid-fill" iconColor="#0d9488" label="พื้นที่รวม" value={totalAreaRai.toFixed(1)} unit="ไร่" valueColor="#0d9488" />
+            {yr5Pt ? (
+              <StatCard icon="bi-graph-up-arrow" iconColor="#3b82f6" label={`พยากรณ์ พ.ศ. ${yr5Pt.yearBE}`} value={Math.floor(yr5Pt.co2).toLocaleString("th-TH")} unit="tCO₂" valueColor="#1d4ed8" />
+            ) : (
+              <div style={{ background: "rgba(255,255,255,0.5)", borderRadius: 12, padding: "12px 14px", border: "1px dashed rgba(16,185,129,0.15)" }} />
+            )}
+            {yr10Pt ? (
+              <StatCard icon="bi-graph-up-arrow" iconColor="#8b5cf6" label={`พยากรณ์ พ.ศ. ${yr10Pt.yearBE}`} value={Math.floor(yr10Pt.co2).toLocaleString("th-TH")} unit="tCO₂" valueColor="#6d28d9" />
+            ) : (
+              <div style={{ background: "rgba(255,255,255,0.5)", borderRadius: 12, padding: "12px 14px", border: "1px dashed rgba(16,185,129,0.15)" }} />
+            )}
+          </div>
+
+          {/* Trees info */}
+          {totalTrees > 0 && (
+            <div style={{ position: "relative", display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: "#475569", background: "rgba(255,255,255,0.6)", borderRadius: 10, padding: "8px 12px", border: "1px solid rgba(16,185,129,0.1)" }}>
+              <i className="bi bi-tree-fill" style={{ color: "#16a34a", fontSize: 14, flexShrink: 0 }} />
+              <span>จำนวนต้นรวม <strong style={{ color: "#064e3b" }}>{totalTrees.toLocaleString("th-TH")}</strong> ต้น</span>
+            </div>
+          )}
         </div>
-      )}
+
+      </div>
     </div>
   );
 }
