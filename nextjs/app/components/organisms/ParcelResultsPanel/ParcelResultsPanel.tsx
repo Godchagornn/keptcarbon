@@ -45,6 +45,7 @@ interface PlotFormData {
     variety: string;
     spacing: string;
     luChecked: Record<string, boolean>;
+    plotIndex?: number;
 }
 
 const VARIETY_OPTIONS = [
@@ -313,9 +314,17 @@ function aggregateProfiles(responses: EstimationResponse[], fallbackBaseAge: num
     const sortedYears = Array.from(yearMap.keys())
         .sort((a, b) => a - b);
 
-    // Limit to the length of the shortest plot's profile
-    const minLength = Math.min(...profiles.map(p => p.length).filter(l => l > 0));
-    const validSortedYears = minLength !== Infinity && minLength > 0 ? sortedYears.slice(0, minLength) : sortedYears;
+    // Find the shortest profile and its years
+    let shortestProfile = profiles.find(p => p.length > 0) || [];
+    for (const p of profiles) {
+        if (p.length > 0 && p.length < shortestProfile.length) {
+            shortestProfile = p;
+        }
+    }
+    const validYearsSet = new Set(shortestProfile.map(item => item.year));
+
+    // Filter sortedYears to only include years present in the shortest profile
+    const validSortedYears = sortedYears.filter(y => validYearsSet.has(y));
 
     const pts: BarPoint[] = validSortedYears.map((year, j) => {
         const data = yearMap.get(year)!;
@@ -838,50 +847,67 @@ export function ParcelResultsPanel({
     }, [plots]);
     // Initialize plotForms automatically when ready
     useEffect(() => {
-        if (plots.length !== plotForms.length) {
+        if (plots.length !== plotForms.length || parcelFeatures.some((feat, i) => {
+            const pIdx = (feat.properties as any)?.plot_index !== undefined ? parseInt((feat.properties as any)?.plot_index) : i + 1;
+            return pIdx !== plotForms[i]?.plotIndex;
+        })) {
             setPlotForms(prev => {
-                if (plots.length > prev.length) {
-                    const next = [...prev];
-                    for (let i = next.length; i < plots.length; i++) {
-                        const feat = parcelFeatures[i];
-                        const props = feat?.properties as any || {};
-                        const savedLU = props.luChecked;
-                        const initialLU = (savedLU && typeof savedLU === 'object' && !Array.isArray(savedLU))
-                            ? savedLU
-                            : { A: true, A302: true };
+                const next: PlotFormData[] = [];
+                for (let i = 0; i < plots.length; i++) {
+                    const feat = parcelFeatures[i];
+                    const props = feat?.properties as any || {};
+                    const pIndex = props.plot_index !== undefined ? parseInt(props.plot_index) : i + 1;
 
-                        const bdForm = props.backendData?.form || {};
-
-                        // Restore plantStatus from saved data first, then infer from year as fallback
-                        let initialStatus: "replanting" | "existing" | "" =
-                            (bdForm.plantStatus === "replanting" || bdForm.plantStatus === "existing")
-                                ? bdForm.plantStatus
-                                : (props.plantStatus === "replanting" || props.plantStatus === "existing"
-                                    ? props.plantStatus
-                                    : "");
-
-                        if (!initialStatus && props.plantYearBE) {
-                            const yStr = String(props.plantYearBE);
-                            if (NEW_YEAR_OPTIONS.includes(yStr)) {
-                                initialStatus = "replanting";
-                            } else if (OLD_YEAR_OPTIONS.includes(yStr)) {
-                                initialStatus = "existing";
-                            }
-                        }
-
-                        next.push({
-                            plantStatus: initialStatus,
-                            plantYear: bdForm.plantYear || "",
-                            treeCount: bdForm.treeCount || "",
-                            variety: bdForm.variety || "",
-                            spacing: bdForm.spacing || "",
-                            luChecked: { ...initialLU },
-                        });
+                    const existingForm = prev.find(f => f.plotIndex === pIndex);
+                    if (existingForm) {
+                        next.push(existingForm);
+                        continue;
                     }
-                    return next;
-                } else {
-                    return prev.slice(0, plots.length);
+
+                    const savedLU = props.luChecked;
+                    const initialLU = (savedLU && typeof savedLU === 'object' && !Array.isArray(savedLU))
+                        ? savedLU
+                        : { A: true, A302: true };
+
+                    const bdForm = props.backendData?.form || {};
+
+                    // Restore plantStatus from saved data first, then infer from year as fallback
+                    let initialStatus: "replanting" | "existing" | "" =
+                        (bdForm.plantStatus === "replanting" || bdForm.plantStatus === "existing")
+                            ? bdForm.plantStatus
+                            : (props.plantStatus === "replanting" || props.plantStatus === "existing"
+                                ? props.plantStatus
+                                : "");
+
+                    if (!initialStatus && props.plantYearBE) {
+                        const yStr = String(props.plantYearBE);
+                        if (NEW_YEAR_OPTIONS.includes(yStr)) {
+                            initialStatus = "replanting";
+                        } else if (OLD_YEAR_OPTIONS.includes(yStr)) {
+                            initialStatus = "existing";
+                        }
+                    }
+
+                    // Final fallback: any plot that has rubber age or plant year data is "existing"
+                    if (!initialStatus) {
+                        const rubberAge = Number(props.rubberAge || props.backendData?.age || 0);
+                        const bePlantYear = Number(props.plantYearBE || props.backendData?.plantYearBE || 0);
+                        if (rubberAge > 0 || bePlantYear > 0) {
+                            initialStatus = "existing";
+                        }
+                    }
+
+                    next.push({
+                        plotIndex: pIndex,
+                        plantStatus: initialStatus,
+                        plantYear: bdForm.plantYear || "",
+                        treeCount: bdForm.treeCount || "",
+                        variety: bdForm.variety || "",
+                        spacing: bdForm.spacing || "",
+                        luChecked: { ...initialLU },
+                    });
                 }
+                return next;
             });
         }
     }, [plots, plotForms.length, parcelFeatures]);
@@ -986,7 +1012,12 @@ export function ParcelResultsPanel({
                 tree_count: form.treeCount ? (parseInt(form.treeCount) || null) : null,
                 spacing_system: form.spacing || null,
                 selected_lu_classes: Object.entries(form?.luChecked || {})
-                    .filter(([cls, on]) => on && (plotsLuRealData[idx]?.[cls]?.rai ?? 0) > 0)
+                    .filter(([cls, on]) => {
+                        if (!on) return false;
+                        const hasRealData = Object.keys(plotsLuRealData[idx] || {}).length > 0;
+                        if (!hasRealData) return true; // Trust the form if we have no real data
+                        return (plotsLuRealData[idx]?.[cls]?.rai ?? 0) > 0;
+                    })
                     .map(([cls]) => cls),
                 project_type: form?.plantStatus || undefined,
             });
@@ -1022,7 +1053,7 @@ export function ParcelResultsPanel({
             for (let idx = 0; idx < parcelFeatures.length; idx++) {
                 const form = plotForms[idx] || { plantYear: "", variety: "", treeCount: "", spacing: "2.5*8", luChecked: {} };
                 const plotFeats = featsByPlot[idx] || [];
-                const totalAreaRai = plotFeats.reduce((s, f) => s + (((f.properties ?? {}) as Record<string, unknown>).area_m2 as number || 0) / 1600, 0);
+                const totalAreaRai = plots[idx]?.areaRai || plotFeats.reduce((s, f) => s + (((f.properties ?? {}) as Record<string, unknown>).area_m2 as number || 0) / 1600, 0);
 
                 // --- Calculate real land use breakdown for this plot ---
                 const luData = plotsLuRealData[idx] || {};
@@ -1138,6 +1169,9 @@ export function ParcelResultsPanel({
                 const co2Now = profile[0]?.stocks?.value ?? 0;
                 const co2NowCi = profile[0]?.stocks?.ci ?? 0;
 
+                const hasValidM2s = Object.values(classM2s).some(m2 => m2 > 0);
+                const finalBreakdown = hasValidM2s ? luBreakdown : (((parcelFeatures[idx]?.properties as any)?.luBreakdown) || {});
+
                 results.push({
                     plotIdx: idx,
                     age: startAge,
@@ -1150,13 +1184,18 @@ export function ParcelResultsPanel({
                     source: "backend" as const,
                     yearUsedDetails,
                     selectedAreaRai: totalPlotSelectedRai,
-                    luBreakdown
+                    luBreakdown: finalBreakdown
                 });
             }
 
             setCarbonResults(results);
             setExpandedResultIdx("total");
             if (onMapPlotSelected) onMapPlotSelected("total");
+
+            const allChecked: Record<number, Record<string, boolean>> = {};
+            plotForms.forEach((f, idx) => { allChecked[idx] = f.luChecked; });
+            onLandUseChange?.(allChecked, null);
+
             onStepChange(3);
 
             // Auto-save to backend if logged in
@@ -1170,11 +1209,15 @@ export function ParcelResultsPanel({
         }
     };
 
+    const lastProcessedTriggerRef = useRef(0);
     useEffect(() => {
-        if (autoProcessTrigger && autoProcessTrigger > 0) {
-            void handleProcessCarbon();
+        if (autoProcessTrigger && autoProcessTrigger > lastProcessedTriggerRef.current) {
+            if (plots.length === plotForms.length && !parcelFeatures.some((feat, i) => parseInt((feat.properties as any)?.plot_index) !== plotForms[i]?.plotIndex)) {
+                lastProcessedTriggerRef.current = autoProcessTrigger;
+                void handleProcessCarbon();
+            }
         }
-    }, [autoProcessTrigger]);
+    }, [autoProcessTrigger, plots, plotForms]);
 
 
     // Removed: if (!(searchRunning || searchErr || searchCount !== null)) return null;

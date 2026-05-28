@@ -741,8 +741,6 @@ function MapDrawContent() {
       "#64748b"
     ] as unknown as maplibregl.ExpressionSpecification;
 
-    map.setFilter("matched-parcels-fill", null);
-    map.setFilter("matched-parcels-line", null);
     map.setPaintProperty("matched-parcels-fill", "fill-color", fillColorMap);
     map.setPaintProperty("matched-parcels-line", "line-color", lineColorMap);
     map.setPaintProperty("matched-parcels-line", "line-width", 2.2);
@@ -1215,7 +1213,17 @@ function MapDrawContent() {
 
             console.log("[AUTO-LOAD] Setting drawnParcels and parcelFeatures to feats:", visibleFeats);
             setDrawnParcels(visibleFeats);
-            setParcelFeatures(visibleFeats);
+
+            const initialParcelFeatures: GeoJSON.Feature[] = [];
+            visibleFeats.forEach(f => {
+              const luPolys = (f.properties as any)?.backendData?.lu_polygon;
+              if (Array.isArray(luPolys) && luPolys.length > 0) {
+                initialParcelFeatures.push(...luPolys);
+              } else {
+                initialParcelFeatures.push(f);
+              }
+            });
+            setParcelFeatures(initialParcelFeatures);
             setHiddenProjectPlots(hiddenFeats);
             needsPlantationSearchRef.current = true;
             setSearchCount(visibleFeats.length);
@@ -1769,6 +1777,7 @@ function MapDrawContent() {
       // and ensures each parcel's LU data is assigned directly by index
       for (let pi = 0; pi < drawnParcels.length; pi++) {
         const parcel = drawnParcels[pi];
+        const plotIndexStr = (parcel.properties as any)?.plot_index || String(pi + 1);
         try {
           const result = await getPlantationInfo({
             id: `parcel-${pi}-${Date.now()}`,
@@ -1785,7 +1794,7 @@ function MapDrawContent() {
                 type: "Feature",
                 geometry: lu.geometry,
                 properties: {
-                  plot_index: String(pi + 1),
+                  plot_index: plotIndexStr,
                   lu_class: lu.lu_class,
                   lu_class_desc_th: lu.lu_class_desc_th,
                   area_m2: lu.area_m2,
@@ -1799,7 +1808,7 @@ function MapDrawContent() {
               type: "Feature",
               geometry: parcel.geometry,
               properties: {
-                plot_index: String(pi + 1),
+                plot_index: plotIndexStr,
                 lu_class: null,
                 lu_class_desc_th: null,
                 area_m2: null,
@@ -1858,7 +1867,7 @@ function MapDrawContent() {
             type: "Feature",
             geometry: parcel.geometry,
             properties: {
-              plot_index: String(pi + 1),
+              plot_index: plotIndexStr,
               lu_class: null,
               lu_class_desc_th: null,
               area_m2: null,
@@ -2761,7 +2770,28 @@ function MapDrawContent() {
                       return ia - ib;
                     });
                     setDrawnParcels(merged);
-                    setParcelFeatures(merged);
+
+                    const editedParcelId = drawnParcels[0] ? (drawnParcels[0].properties as any)?.id : null;
+                    const allLuFeats: GeoJSON.Feature[] = [];
+                    merged.forEach((mp, mergedIdx) => {
+                      const correctPlotIndex = String(mergedIdx + 1);
+                      const mpId = (mp.properties as any)?.id;
+                      if (mpId && mpId === editedParcelId) {
+                        parcelFeatures.forEach(lf => {
+                          allLuFeats.push({ ...lf, properties: { ...((lf.properties as Record<string, unknown>) || {}), plot_index: correctPlotIndex } });
+                        });
+                      } else {
+                        const luPolys = (mp.properties as any)?.backendData?.lu_polygon;
+                        if (Array.isArray(luPolys) && luPolys.length > 0) {
+                          luPolys.forEach((lu: GeoJSON.Feature) => {
+                            allLuFeats.push({ ...lu, properties: { ...((lu.properties as Record<string, unknown>) || {}), plot_index: correctPlotIndex } });
+                          });
+                        } else {
+                          allLuFeats.push({ ...(mp as GeoJSON.Feature), properties: { ...((mp.properties as Record<string, unknown>) || {}), plot_index: correctPlotIndex, lu_class: null, lu_class_desc_th: null, area_m2: null, area_percent: null } });
+                        }
+                      }
+                    });
+                    setParcelFeatures(allLuFeats);
                     setHiddenProjectPlots([]);
 
                     const map = mapRef.current;

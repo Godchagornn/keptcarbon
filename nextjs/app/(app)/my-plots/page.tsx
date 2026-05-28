@@ -704,8 +704,39 @@ function PlotMiniMap({ plot, isMobile, index }: { plot: SavedPlot; isMobile: boo
     plotRef.current = plot;
   }, [plot]);
 
+  const luFeatures = plot.backendData?.lu_polygon || [];
+  const luChecked = plot.luChecked || {};
+  const luCheckedKey = JSON.stringify(luChecked);
+
+  const filteredLuFeatures = useMemo(() => {
+    const hasSelected = Object.values(luChecked).some(val => val === true);
+    if (!hasSelected) return [];
+    return luFeatures.filter(feat => {
+      const code = (feat as any).properties?.lu_class as string | undefined;
+      if (!code) return false;
+      // A302 and A are fixed to true in the UI
+      if (code === "A302" || code === "A") return true;
+      return !!luChecked[code];
+    });
+  }, [luFeatures.length, luCheckedKey]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const filteredLuFeaturesRef = useRef(filteredLuFeatures);
+  useEffect(() => { filteredLuFeaturesRef.current = filteredLuFeatures; }, [filteredLuFeatures]);
+
+  const legendItems = useMemo(() => {
+    const seen = new Map<string, { color: string; descTh?: string }>();
+    for (const feat of filteredLuFeatures) {
+      const p = (feat as any).properties as Record<string, unknown> | undefined;
+      const code = p?.lu_class as string | undefined;
+      const descTh = p?.lu_class_desc_th as string | undefined;
+      if (code && !seen.has(code)) seen.set(code, { color: getLuColor(code), descTh });
+    }
+    return Array.from(seen.entries()).map(([code, { color, descTh }]) => ({ code, color, label: getLuShortLabel(code, descTh) }));
+  }, [filteredLuFeatures.length, luCheckedKey]); // eslint-disable-line react-hooks/exhaustive-deps
+
   useEffect(() => {
-    if (!mapContainerRef.current || mapRef.current) return;
+    if (!mapContainerRef.current) return;
+    if (mapRef.current) { mapRef.current.remove(); mapRef.current = null; }
     const map = new maplibregl.Map({
       container: mapContainerRef.current,
       style: {
@@ -761,12 +792,7 @@ function PlotMiniMap({ plot, isMobile, index }: { plot: SavedPlot; isMobile: boo
             else if (Array.isArray(coords)) coords.forEach(processCoords);
           };
 
-          const luPolygons = currentPlot.backendData?.lu_polygon as GeoJSON.Feature[];
-          if (luPolygons && luPolygons.length > 0) {
-            luPolygons.forEach(f => {
-              if (f.geometry) processCoords((f.geometry as any).coordinates);
-            });
-          } else if (currentPlot.geojson) {
+          if (currentPlot.geojson) {
             processCoords((currentPlot.geojson as any).coordinates);
           }
 
@@ -788,100 +814,92 @@ function PlotMiniMap({ plot, isMobile, index }: { plot: SavedPlot; isMobile: boo
 
     map.on("load", () => {
       const bounds = new maplibregl.LngLatBounds();
+      const processCoords = (coords: any) => {
+        if (typeof coords[0] === "number") bounds.extend(coords as [number, number]);
+        else if (Array.isArray(coords)) coords.forEach(processCoords);
+      };
 
-      const luPolygons = plot.backendData?.lu_polygon as GeoJSON.Feature[];
-      const hasLu = luPolygons && luPolygons.length > 0;
+      const currentPlot = plotRef.current;
+      const currentLuFeatures = filteredLuFeaturesRef.current;
 
-      if (hasLu) {
-        const luChecked = plot.luChecked || {};
-        const features = luPolygons.map(f => {
-          const cls = (f.properties as any).lu_class as string;
-          return { ...f, properties: { ...f.properties, is_selected: luChecked[cls] ? 1 : 0 } };
-        });
-
-        const luColorExpr = [
-          "case",
-          ["==", ["slice", ["coalesce", ["get", "lu_class"], ""], 0, 4], "A302"], "#84cc16",
-          ["==", ["slice", ["coalesce", ["get", "lu_class"], ""], 0, 1], "A"], "#84cc16",
-          ["==", ["slice", ["coalesce", ["get", "lu_class"], ""], 0, 1], "F"], "#166534",
-          ["==", ["slice", ["coalesce", ["get", "lu_class"], ""], 0, 1], "W"], "#3b82f6",
-          ["==", ["slice", ["coalesce", ["get", "lu_class"], ""], 0, 1], "U"], "#ef4444",
-          ["==", ["slice", ["coalesce", ["get", "lu_class"], ""], 0, 1], "M"], "#9ca3af",
-          "#94a3b8"
-        ];
-
-        map.addSource("lu-polygons", {
-          type: "geojson",
-          data: { type: "FeatureCollection", features } as any
-        });
-
+      // Add LU polygons (colored by type, no text labels)
+      if (currentLuFeatures.length > 0) {
+        const luGeoJSON: GeoJSON.FeatureCollection = {
+          type: "FeatureCollection",
+          features: currentLuFeatures.map(feat => ({
+            type: "Feature" as const,
+            geometry: feat.geometry,
+            properties: { color: getLuColor(((feat as any).properties?.lu_class as string) || "") }
+          }))
+        };
+        map.addSource("lu-polygons", { type: "geojson", data: luGeoJSON });
         map.addLayer({
-          id: "lu-polygons-fill", type: "fill", source: "lu-polygons",
-          paint: {
-            "fill-color": luColorExpr as any,
-            "fill-opacity": ["case", ["==", ["get", "is_selected"], 1], 0.65, 0.15] as any
-          }
+          id: "lu-fill", type: "fill", source: "lu-polygons",
+          paint: { "fill-color": ["get", "color"], "fill-opacity": 0.55 }
         });
-
         map.addLayer({
-          id: "lu-polygons-line", type: "line", source: "lu-polygons",
-          paint: { "line-color": "#ffffff", "line-width": 1, "line-opacity": 0.7 }
+          id: "lu-line", type: "line", source: "lu-polygons",
+          paint: { "line-color": ["get", "color"], "line-width": 1, "line-opacity": 0.9 }
         });
-
-        map.addLayer({
-          id: "lu-polygons-label", type: "symbol", source: "lu-polygons",
-          filter: ["==", ["get", "is_selected"], 1],
-          layout: {
-            "text-field": ["get", "lu_class"],
-            "text-size": isMobile ? 10 : 12,
-            "text-allow-overlap": false,
-          },
-          paint: {
-            "text-color": "#ffffff",
-            "text-halo-color": "#0f172a",
-            "text-halo-width": 2,
-          },
-        });
-
-        // Add boundary outline over the LUs
-        if (plot.geojson) {
-          map.addSource("plot-parcel-outline", {
-            type: "geojson",
-            data: { type: "Feature", geometry: plot.geojson as any, properties: {} }
-          });
-          map.addLayer({
-            id: "parcel-outline-line", type: "line", source: "plot-parcel-outline",
-            paint: { "line-color": "#064e3b", "line-width": 2.5 }
-          });
+        for (const feat of currentLuFeatures) {
+          processCoords((feat.geometry as any).coordinates);
         }
 
-        const processCoords = (coords: any) => {
-          if (typeof coords[0] === "number") bounds.extend(coords as [number, number]);
-          else if (Array.isArray(coords)) coords.forEach(processCoords);
-        };
-        luPolygons.forEach(f => {
-          if (f.geometry) processCoords((f.geometry as any).coordinates);
+        // One label per unique LU class, placed at centroid of first polygon of that class
+        const classFirstRing = new Map<string, { ring: number[][]; descTh?: string }>();
+        for (const feat of currentLuFeatures) {
+          const p = (feat as any).properties as Record<string, unknown> | undefined;
+          const code = p?.lu_class as string | undefined;
+          const descTh = p?.lu_class_desc_th as string | undefined;
+          if (!code || classFirstRing.has(code)) continue;
+          const geom = feat.geometry as GeoJSON.Polygon | GeoJSON.MultiPolygon;
+          let ring: number[][];
+          if (geom.type === "Polygon") ring = geom.coordinates[0];
+          else ring = geom.coordinates[0][0];
+          classFirstRing.set(code, { ring, descTh });
+        }
+        const labelFeatures = Array.from(classFirstRing.entries()).map(([code, { ring, descTh }]) => {
+          const cx = ring.reduce((s, c) => s + c[0], 0) / ring.length;
+          const cy = ring.reduce((s, c) => s + c[1], 0) / ring.length;
+          return {
+            type: "Feature" as const,
+            geometry: { type: "Point" as const, coordinates: [cx, cy] },
+            properties: { label: code }
+          };
         });
+        if (labelFeatures.length > 0) {
+          map.addSource("lu-labels", { type: "geojson", data: { type: "FeatureCollection", features: labelFeatures } });
+          map.addLayer({
+            id: "lu-label-text", type: "symbol", source: "lu-labels",
+            layout: {
+              "text-field": ["get", "label"],
+              "text-font": ["Open Sans Regular"],
+              "text-size": 11,
+              "text-anchor": "center",
+              "text-allow-overlap": false,
+            },
+            paint: { "text-color": "#ffffff", "text-halo-color": "#1e293b", "text-halo-width": 1.5 }
+          });
+        }
+      }
 
-      } else if (plot.geojson) {
-        // Fallback to just showing the drawn polygon if no LU data
+      // Parcel boundary — fill only when no LU data, always show outline
+      if (currentPlot.geojson) {
         map.addSource("plot-parcel", {
           type: "geojson",
-          data: { type: "Feature", geometry: plot.geojson as any, properties: {} }
+          data: { type: "Feature", geometry: currentPlot.geojson as any, properties: {} }
         });
-        map.addLayer({
-          id: "parcel-fill", type: "fill", source: "plot-parcel",
-          paint: { "fill-color": "#f97316", "fill-opacity": 0.35 }
-        });
+        if (currentLuFeatures.length === 0) {
+          map.addLayer({
+            id: "parcel-fill", type: "fill", source: "plot-parcel",
+            paint: { "fill-color": "#10b981", "fill-opacity": 0.35 }
+          });
+        }
         map.addLayer({
           id: "parcel-line", type: "line", source: "plot-parcel",
-          paint: { "line-color": "#ea580c", "line-width": 2 }
+          paint: { "line-color": "#059669", "line-width": 2.5 }
         });
-        const processCoords = (coords: any) => {
-          if (typeof coords[0] === "number") bounds.extend(coords as [number, number]);
-          else if (Array.isArray(coords)) coords.forEach(processCoords);
-        };
-        processCoords((plot.geojson as any).coordinates);
+        processCoords((currentPlot.geojson as any).coordinates);
       }
 
       if (!bounds.isEmpty()) {
@@ -890,35 +908,12 @@ function PlotMiniMap({ plot, isMobile, index }: { plot: SavedPlot; isMobile: boo
     });
 
     return () => { map.remove(); mapRef.current = null; };
-  }, [plot, isMobile]);
-
-  const luPolygonsForLegend = (plot.backendData?.lu_polygon as GeoJSON.Feature[] | undefined) ?? [];
-  const hasLuData = luPolygonsForLegend.length > 0;
-  const luCheckedForLegend = plot.luChecked || {};
-
-  const luLegendItems = useMemo(() => {
-    const seen = new Map<string, { cls: string; label: string; color: string; selected: boolean }>();
-    for (const f of luPolygonsForLegend) {
-      const cls = (f.properties as any).lu_class as string;
-      if (!cls || seen.has(cls)) continue;
-      seen.set(cls, {
-        cls,
-        label: getLuShortLabel(cls, (f.properties as any).lu_class_desc_th),
-        color: getLuColor(cls),
-        selected: !!luCheckedForLegend[cls],
-      });
-    }
-    return Array.from(seen.values()).filter(item => item.selected);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [plot]);
-
-  const swatchSize = isMobile ? 11 : 13;
-  const legendFontSize = isMobile ? 10 : 11;
+  }, [plot.id, filteredLuFeatures.length, luCheckedKey, isMobile]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <div style={{ position: "relative", width: "100%", height: isMobile ? 220 : 300, borderRadius: 12, overflow: "hidden", border: "1px solid rgba(0,0,0,0.1)", background: "#e2e8f0" }}>
       <div ref={mapContainerRef} style={{ width: "100%", height: "100%" }} />
-      {hasLuData && luLegendItems.length > 0 && (
+      {filteredLuFeatures.length > 0 && legendItems.length > 0 && (
         <div style={{
           position: "absolute", bottom: isMobile ? 10 : 12, left: isMobile ? 8 : 12,
           background: "rgba(255,255,255,0.96)", backdropFilter: "blur(4px)",
@@ -935,20 +930,20 @@ function PlotMiniMap({ plot, isMobile, index }: { plot: SavedPlot; isMobile: boo
           <div style={{ fontSize: isMobile ? 9 : 10, color: "#64748b", marginBottom: isMobile ? 4 : 6, lineHeight: 1.2 }}>
             *พื้นที่ที่เลือกใช้ในการประมวลผล
           </div>
-          {luLegendItems.map(item => (
-            <div key={item.cls} style={{ display: "flex", alignItems: "center", gap: 5, marginBottom: isMobile ? 2 : 3 }}>
+          {legendItems.map(item => (
+            <div key={item.code} style={{ display: "flex", alignItems: "center", gap: 5, marginBottom: isMobile ? 2 : 3 }}>
               <div style={{
-                width: swatchSize, height: swatchSize, flexShrink: 0,
+                width: isMobile ? 12 : 14, height: isMobile ? 12 : 14, flexShrink: 0,
                 background: item.color, borderRadius: 2, opacity: 0.85,
                 border: `1.5px solid ${item.color}`,
               }} />
               <span style={{
-                fontSize: legendFontSize, lineHeight: 1.3,
+                fontSize: isMobile ? 10 : 11, lineHeight: 1.3,
                 color: "#1e293b", fontWeight: 600,
                 overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
                 maxWidth: isMobile ? 128 : 168,
               }}>
-                <span style={{ fontWeight: 700 }}>{item.cls}</span> {item.label}
+                <span style={{ fontWeight: 700 }}>{item.code}</span> {item.label}
               </span>
             </div>
           ))}
@@ -967,6 +962,7 @@ function ProjectCarbonSummary({ plots, isMobile }: { plots: SavedPlot[]; isMobil
     let fallbackTotal = 0;
     let fallbackLinearCi = 0;
     let minLength = Infinity;
+    let shortestPts: BarPoint[] | null = null;
 
     for (const plot of plots) {
       const isProcessed = plot.processed === true || (plot.carbonProfile && plot.carbonProfile.length > 0) || (plot.carbonTotal > 0);
@@ -991,7 +987,10 @@ function ProjectCarbonSummary({ plots, isMobile }: { plots: SavedPlot[]; isMobil
       }
 
       if (pts.length > 0) {
-        minLength = Math.min(minLength, pts.length);
+        if (pts.length < minLength) {
+          minLength = pts.length;
+          shortestPts = pts;
+        }
       }
 
       for (const p of pts) {
@@ -1012,8 +1011,10 @@ function ProjectCarbonSummary({ plots, isMobile }: { plots: SavedPlot[]; isMobil
     }
 
     const sorted = Array.from(sumMap.entries()).sort((a, b) => a[0] - b[0]);
-    // Truncate the combined graph to the length of the shortest plot's graph
-    const validSorted = minLength !== Infinity ? sorted.slice(0, minLength) : sorted;
+    
+    // Filter to only include the exact years present in the shortest plot's profile
+    const validYearsSet = new Set(shortestPts ? shortestPts.map(p => p.yearBE) : []);
+    const validSorted = shortestPts ? sorted.filter(([yearBE]) => validYearsSet.has(yearBE)) : sorted;
 
     const combinedPts: BarPoint[] = validSorted.map(([yearBE, d], i) => {
       const avgAge = d.validAgeCount > 0 ? Math.round(d.totalValidAge / d.validAgeCount) : Math.round(d.fallbackAgeAccum / (d.fallbackCount || 1));
@@ -1671,7 +1672,7 @@ export default function MyPlotsPage() {
         if (luFeatures.length > 0) {
           const allRings: GeoJSON.Position[][][] = [];
           for (const feat of luFeatures) {
-            const code = (feat as any).lu_class as string | undefined;
+            const code = (feat as any).properties?.lu_class as string | undefined;
             const P = code ? code.charAt(0).toUpperCase() : "";
             if (!code || luChecked[code] || luChecked[P] || code === "A302") {
               const fGeom = feat.geometry as GeoJSON.Polygon | GeoJSON.MultiPolygon;
