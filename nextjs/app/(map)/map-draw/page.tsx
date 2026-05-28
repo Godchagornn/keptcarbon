@@ -123,6 +123,7 @@ function MapDrawContent() {
   const [projectType, setProjectType] = useState<"replanting" | "existing" | null>(null);
   const [projectName, setProjectName] = useState(projNameParam || "");
   const [stepWarningPopup, setStepWarningPopup] = useState<boolean>(false);
+  const [plotsSaved, setPlotsSaved] = useState(false);
 
   const [hiddenProjectPlots, setHiddenProjectPlots] = useState<GeoJSON.Feature[]>([]);
   const [autoProcessTrigger, setAutoProcessTrigger] = useState(0);
@@ -1389,6 +1390,7 @@ function MapDrawContent() {
       },
     };
 
+    setPlotsSaved(false);
     setDrawnParcels(prev => {
       const next = [...prev, newFeature];
       const map = mapRef.current;
@@ -1665,6 +1667,7 @@ function MapDrawContent() {
     setShpFile(null);
     setShpStatus(null);
     setDrawnParcels([]);
+    setPlotsSaved(false);
     setProjectType(null);
     const map = mapRef.current;
     if (map && mapLoadedRef.current) {
@@ -2784,6 +2787,7 @@ function MapDrawContent() {
                 onProjectTypeChange={(type) => setProjectType(type)}
                 projectName={projectName}
                 autoProcessTrigger={autoProcessTrigger}
+                onSave={() => setPlotsSaved(true)}
                 onBeforeProcess={() => {
                   if (hiddenProjectPlots.length > 0) {
                     const merged = [...drawnParcels, ...hiddenProjectPlots];
@@ -2960,7 +2964,7 @@ function MapDrawContent() {
               {user
                 ? "ต้องการที่จะเริ่มกำหนดขอบเขตและสร้างโครงการใหม่"
                 : "หากกลับไปข้อมูลที่ทำไว้จะหายไป"}
-              {user && (
+              {user && !plotsSaved && (
                 <>
                   <br />
                   <span style={{ color: "#dc6926ff", fontWeight: 700, display: "block", marginTop: 8 }}>

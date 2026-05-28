@@ -34,6 +34,7 @@ type Props = {
     projectName?: string;
     onBeforeProcess?: () => boolean;
     autoProcessTrigger?: number;
+    onSave?: () => void;
 };
 
 
@@ -276,26 +277,23 @@ function computePlot(feat: GeoJSON.Feature): PlotInfo {
 
 
 function aggregateProfiles(responses: EstimationResponse[], fallbackBaseAge: number = 0): BarPoint[] {
-    // Only keep non-empty profiles
+    // Only keep non-empty profiles and filter by age <= 28 to match visual graph cutoff
     const profiles = responses
         .map(r => r.carbon_profile)
-        .filter((p): p is YearlyEstimate[] => Array.isArray(p) && p.length > 0);
+        .filter((p): p is YearlyEstimate[] => Array.isArray(p) && p.length > 0)
+        .map(p => p.filter(item => item.age == null || isNaN(item.age) || item.age <= 28));
 
     if (profiles.length === 0) return [];
 
-    // Find the common year range: latest start year → earliest end year across all profiles.
-    // A longer-lived existing plot may have more data points yet still end earlier in calendar
-    // time, so comparing lengths alone is wrong — we must compare actual end years.
+    // Find the common year range: earliest start year → earliest end year across all profiles.
+    // This allows Existing plots to show before Replanting plots in the combined view.
     const minEndYear = Math.min(...profiles.map(p => p[p.length - 1].year));
-    const maxStartYear = Math.max(...profiles.map(p => p[0].year));
+    const minStartYear = Math.min(...profiles.map(p => p[0].year));
 
-    if (maxStartYear > minEndYear) return [];
-
-    // Use the profile that starts latest as the year-order reference, then cap at minEndYear.
-    const referenceProfile = profiles.reduce((a, b) => a[0].year >= b[0].year ? a : b);
-    const validYears = referenceProfile
-        .map(item => item.year)
-        .filter(y => y <= minEndYear);
+    const validYears: number[] = [];
+    for (let y = minStartYear; y <= minEndYear; y++) {
+        validYears.push(y);
+    }
     const validYearsSet = new Set(validYears);
 
     // Initialise the accumulator only for valid years
@@ -578,6 +576,7 @@ export function ParcelResultsPanel({
     projectName = "",
     onBeforeProcess,
     autoProcessTrigger,
+    onSave,
 }: Props) {
     const [expandedIdx, setExpandedIdx] = useState<number | null>(0);
     const [expandedResultIdx, setExpandedResultIdx] = useState<number | "total" | null>(null);
@@ -1358,6 +1357,7 @@ export function ParcelResultsPanel({
             });
         } catch (e) { console.error(e); }
         setSaveState("done");
+        onSave?.();
         setTimeout(() => setSaveState("idle"), 2000);
     };
 

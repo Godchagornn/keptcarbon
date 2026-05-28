@@ -973,9 +973,9 @@ function ProjectCarbonSummary({ plots, isMobile }: { plots: SavedPlot[]; isMobil
       const chartStartYearBE = plantYearBE > 0 ? plantYearBE + effectiveAge : currentYearBE;
 
       if (plot.carbonProfile && plot.carbonProfile.length > 0) {
-        allPtsArrays.push(plot.carbonProfile);
+        allPtsArrays.push(plot.carbonProfile.filter(p => p.age == null || isNaN(p.age) || p.age <= 28));
       } else if (effectiveAge > 0 && (plot.trees ?? 0) > 0) {
-        allPtsArrays.push(buildBarPoints(effectiveAge, chartStartYearBE, plot.trees ?? 0, plot.spacing || "2.5x8"));
+        allPtsArrays.push(buildBarPoints(effectiveAge, chartStartYearBE, plot.trees ?? 0, plot.spacing || "2.5x8").filter(p => p.age == null || isNaN(p.age) || p.age <= 28));
       } else {
         if (plot.carbonTotal > 0) fallbackTotal += Math.floor(plot.carbonTotal);
         const approxCi = (plot.carbonTotal || 0) * 0.05;
@@ -987,9 +987,15 @@ function ProjectCarbonSummary({ plots, isMobile }: { plots: SavedPlot[]; isMobil
       return { combinedPts: [], totalNow: fallbackTotal, ciNow: fallbackLinearCi, showAggregateAge: false };
     }
 
-    // Pass 2: find the shortest profile — its yearBE sequence defines the x-axis
-    const shortestPts = allPtsArrays.reduce((a, b) => a.length <= b.length ? a : b);
-    const validYearBEs = shortestPts.map(p => p.yearBE);
+    // Pass 2: find the common yearBE range: earliest start year → earliest end year.
+    // This allows Existing plots (e.g. 2569) to show before Replanting plots (e.g. 2570).
+    const minEndYearBE = Math.min(...allPtsArrays.map(pts => pts[pts.length - 1].yearBE));
+    const minStartYearBE = Math.min(...allPtsArrays.map(pts => pts[0].yearBE));
+
+    const validYearBEs: number[] = [];
+    for (let y = minStartYearBE; y <= minEndYearBE; y++) {
+        validYearBEs.push(y);
+    }
     const validYearBESet = new Set(validYearBEs);
 
     // Pass 3: sum contributions from all plots, only for valid yearBEs
@@ -1093,7 +1099,7 @@ function ProjectCarbonSummary({ plots, isMobile }: { plots: SavedPlot[]; isMobil
   );
 }
 
-function PlotCard({ plot, index, onDelete, onEdit, expanded, onToggle, isMobile, minBarCount }: { plot: SavedPlot; index: number; onDelete: () => void; onEdit?: (p: SavedPlot, i: number) => void; expanded: boolean; onToggle: () => void; isMobile: boolean; minBarCount?: number }) {
+function PlotCard({ plot, index, onDelete, onEdit, expanded, onToggle, isMobile, maxYearBE }: { plot: SavedPlot; index: number; onDelete: () => void; onEdit?: (p: SavedPlot, i: number) => void; expanded: boolean; onToggle: () => void; isMobile: boolean; maxYearBE?: number }) {
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [activeTab, setActiveTab] = useState<"map" | "carbon">("map");
   const [expandYears, setExpandYears] = useState(false);
@@ -1117,7 +1123,7 @@ function PlotCard({ plot, index, onDelete, onEdit, expanded, onToggle, isMobile,
         ? buildBarPoints(effectiveAge, chartStartYearBE, plot.trees ?? 0, plot.spacing || "2.5x8")
         : [])
     : [];
-  const limitedBarPts = minBarCount && minBarCount > 0 ? barPts.slice(0, minBarCount) : barPts;
+  const limitedBarPts = maxYearBE && maxYearBE > 0 ? barPts.filter(p => p.yearBE <= maxYearBE) : barPts;
 
   const plantStatusLabel = plot.plantStatus === "replanting" ? "เริ่มปลูกใหม่" : plot.plantStatus === "existing" ? "ปลูกมาแล้ว" : "—";
 
@@ -2110,10 +2116,10 @@ export default function MyPlotsPage() {
 
                   {/* Project Plots */}
                   {expandedProjects[group.projectName] && (() => {
-                    const profileLengths = group.plots
-                      .filter(p => p.carbonProfile && p.carbonProfile.length > 0)
-                      .map(p => p.carbonProfile!.length);
-                    const groupMinBarCount = profileLengths.length > 0 ? Math.min(...profileLengths) : 0;
+                    const profilesWithData = group.plots.filter(p => p.carbonProfile && p.carbonProfile.length > 0);
+                    const groupMinEndYearBE = profilesWithData.length > 0
+                      ? Math.min(...profilesWithData.map(p => p.carbonProfile![p.carbonProfile!.length - 1].yearBE))
+                      : 0;
                     return (
                       <div style={{ padding: isMobile ? "16px" : "24px", background: "#f8fafc", borderTop: "1px solid rgba(16,185,129,0.1)" }}>
                         <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
@@ -2128,7 +2134,7 @@ export default function MyPlotsPage() {
                               expanded={expandedPlotId === plot.id}
                               onToggle={() => setExpandedPlotId(prev => prev === plot.id ? null : plot.id)}
                               isMobile={isMobile}
-                              minBarCount={groupMinBarCount > 0 ? groupMinBarCount : undefined}
+                              maxYearBE={groupMinEndYearBE > 0 ? groupMinEndYearBE : undefined}
                             />
                           ))}
                         </div>
