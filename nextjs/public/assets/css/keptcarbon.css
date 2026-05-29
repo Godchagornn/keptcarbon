@@ -1720,31 +1720,3 @@
   margin-top: 10px;
   padding-top: 10px;
 }
-
-.kc-mobile-drawer .drawer-footer {
-  padding: 24px;
-  border-top: 1px solid rgba(0, 0, 0, 0.05);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-direction: column;
-  color: #8c9b90;
-  background: #ffffff;
-}
-
-.kc-mobile-drawer .drawer-footer i {
-  font-size: 22px;
-  margin-bottom: 8px;
-}
-
-.kc-mobile-drawer .drawer-footer .footer-title {
-  font-size: 14px;
-  font-weight: 500;
-  color: #6a7c70;
-}
-
-.kc-mobile-drawer .drawer-footer .footer-subtitle {
-  font-size: 12px;
-  text-align: center;
-  margin-top: 2px;
-}

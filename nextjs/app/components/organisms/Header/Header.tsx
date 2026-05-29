@@ -339,14 +339,6 @@ export default function Header() {
             </div>
           </div>
 
-          <div className="drawer-footer">
-            <i className="bi bi-leaf-fill"></i>
-            <div className="footer-title" style={{ fontSize: '13px', lineHeight: '1.5', color: '#6a7c70', textAlign: 'center' }}>
-              แพลตฟอร์มภูมิสารสนเทศและปัญญาประดิษฐ์<br />
-              เพื่อการจัดการสวนยางพารา
-            </div>
-
-          </div>
         </div>
       </div>
     </>
