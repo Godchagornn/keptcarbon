@@ -1714,6 +1714,10 @@ export default function MyPlotsPage() {
   const [viewMode, setViewMode] = useState<"mine" | "all">("mine");
   const [displayMode, setDisplayMode] = useState<"list" | "map">("list");
   const [isMobile, setIsMobile] = useState(false);
+  const [deleteDropdownOpen, setDeleteDropdownOpen] = useState(false);
+  const [selectDeleteMode, setSelectDeleteMode] = useState(false);
+  const [selectedProjectNames, setSelectedProjectNames] = useState<Set<string>>(new Set());
+  const [confirmDeleteSelected, setConfirmDeleteSelected] = useState(false);
 
   const isAdmin = user?.role === "admin";
 
@@ -1800,6 +1804,39 @@ export default function MyPlotsPage() {
   };
 
 
+
+  const handleDeleteProject = (projectName: string) => {
+    const isGuest = !user && typeof window !== "undefined" && !!localStorage.getItem("guest_user_id");
+    const projectPlots = plots.filter(p => p.name === projectName);
+    const uniqueProjectIds = [...new Set(projectPlots.map(p => p.dbProjectId).filter((id): id is number => id !== undefined))];
+    setPlots(prev => prev.filter(p => p.name !== projectName));
+    const guestQuery = isGuest ? `?guest_user_id=${localStorage.getItem("guest_user_id")}` : "";
+    uniqueProjectIds.forEach(dbId => {
+      fetch(`/api/plots/${dbId}${guestQuery}`, { method: "DELETE" }).catch(console.error);
+    });
+  };
+
+  const handleDeleteSelected = () => {
+    selectedProjectNames.forEach(name => handleDeleteProject(name));
+    setSelectedProjectNames(new Set());
+    setSelectDeleteMode(false);
+    setConfirmDeleteSelected(false);
+  };
+
+  const exitSelectMode = () => {
+    setSelectDeleteMode(false);
+    setSelectedProjectNames(new Set());
+    setConfirmDeleteSelected(false);
+  };
+
+  const toggleProjectSelection = (projectName: string) => {
+    setSelectedProjectNames(prev => {
+      const next = new Set(prev);
+      if (next.has(projectName)) next.delete(projectName);
+      else next.add(projectName);
+      return next;
+    });
+  };
 
   const totalArea = plots.reduce((s, p) => s + (p.areaRai || 0), 0);
 
@@ -2273,30 +2310,90 @@ export default function MyPlotsPage() {
             <div style={{ display: "flex", gap: isMobile ? 6 : 10, alignItems: "center", flexShrink: 0 }}>
 
               {plots.length > 0 && (
-                <div>
-                  {confirmDeleteAll ? (
+                <div style={{ position: "relative" }}>
+                  {selectDeleteMode ? (
+                    <div style={{ display: "flex", gap: 7, alignItems: "center" }}>
+                      {selectedProjectNames.size > 0 ? (
+                        confirmDeleteSelected ? (
+                          <>
+                            <span style={{ fontSize: isMobile ? 13 : 14, color: "#ef4444", fontWeight: 700, whiteSpace: "nowrap" }}>
+                              ลบ {selectedProjectNames.size} โครงการ?
+                            </span>
+                            <button
+                              onClick={handleDeleteSelected}
+                              style={{ padding: "6px 12px", background: "#ef4444", color: "#fff", border: "none", borderRadius: 8, cursor: "pointer", fontWeight: 700, fontSize: 14 }}
+                            >ยืนยัน</button>
+                            <button
+                              onClick={() => setConfirmDeleteSelected(false)}
+                              style={{ padding: "6px 10px", background: "rgba(0,0,0,0.06)", color: "#64748b", border: "none", borderRadius: 8, cursor: "pointer", fontSize: 14, fontWeight: 600 }}
+                            >ยกเลิก</button>
+                          </>
+                        ) : (
+                          <>
+                            <button
+                              onClick={() => setConfirmDeleteSelected(true)}
+                              style={{ padding: isMobile ? "6px 10px" : "7px 13px", background: "#ef4444", color: "#fff", border: "none", borderRadius: 9, cursor: "pointer", fontSize: 14, fontWeight: 700, display: "flex", alignItems: "center", gap: 5 }}
+                            >
+                              <i className="bi bi-trash3-fill" style={{ fontSize: 13 }} /> ลบที่เลือก ({selectedProjectNames.size})
+                            </button>
+                            <button
+                              onClick={exitSelectMode}
+                              style={{ padding: "7px 11px", background: "rgba(0,0,0,0.06)", color: "#64748b", border: "none", borderRadius: 9, cursor: "pointer", fontSize: 14, fontWeight: 600 }}
+                            >ยกเลิก</button>
+                          </>
+                        )
+                      ) : (
+                        <>
+                          <span style={{ fontSize: 13, color: "#64748b", whiteSpace: "nowrap" }}>
+                            <i className="bi bi-check2-square" style={{ marginRight: 4 }} />เลือกโครงการ
+                          </span>
+                          <button
+                            onClick={exitSelectMode}
+                            style={{ padding: "6px 10px", background: "rgba(0,0,0,0.06)", color: "#64748b", border: "none", borderRadius: 8, cursor: "pointer", fontSize: 14, fontWeight: 600 }}
+                          >ยกเลิก</button>
+                        </>
+                      )}
+                    </div>
+                  ) : confirmDeleteAll ? (
                     <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
                       <span style={{ fontSize: 15, color: "#ef4444", fontWeight: 700 }}>ลบทั้งหมด?</span>
                       <button
                         onClick={handleDeleteAll}
                         style={{ padding: "6px 14px", background: "#ef4444", color: "#fff", border: "none", borderRadius: 8, cursor: "pointer", fontWeight: 700, fontSize: 15 }}
-                      >
-                        ยืนยัน
-                      </button>
+                      >ยืนยัน</button>
                       <button
                         onClick={() => setConfirmDeleteAll(false)}
                         style={{ padding: "6px 14px", background: "rgba(0,0,0,0.06)", color: "#64748b", border: "none", borderRadius: 8, cursor: "pointer", fontSize: 15, fontWeight: 600 }}
-                      >
-                        ยกเลิก
-                      </button>
+                      >ยกเลิก</button>
                     </div>
                   ) : (
-                    <button
-                      onClick={() => setConfirmDeleteAll(true)}
-                      style={{ padding: isMobile ? "6px 10px" : "8px 12px", background: "rgba(239,68,68,0.1)", color: "#ef4444", border: "1px solid rgba(239,68,68,0.2)", borderRadius: 10, cursor: "pointer", fontSize: 15, fontWeight: 700, display: "flex", alignItems: "center", gap: 6, transition: "all 0.2s" }}
-                    >
-                      <i className="bi bi-trash3-fill" style={{ fontSize: isMobile ? 15 : 14 }} /> {isMobile ? "" : "ลบทั้งหมด"}
-                    </button>
+                    <div style={{ position: "relative" }}>
+                      <button
+                        onClick={() => setDeleteDropdownOpen(prev => !prev)}
+                        onBlur={() => setTimeout(() => setDeleteDropdownOpen(false), 180)}
+                        style={{ padding: isMobile ? "6px 10px" : "8px 12px", background: "rgba(239,68,68,0.1)", color: "#ef4444", border: "1px solid rgba(239,68,68,0.2)", borderRadius: 10, cursor: "pointer", fontSize: 15, fontWeight: 700, display: "flex", alignItems: "center", gap: 5, transition: "all 0.2s" }}
+                      >
+                        <i className="bi bi-trash3-fill" style={{ fontSize: 14 }} />
+                        {!isMobile && <span>ลบ</span>}
+                        <i className="bi bi-chevron-down" style={{ fontSize: 11, opacity: 0.7 }} />
+                      </button>
+                      {deleteDropdownOpen && (
+                        <div style={{ position: "absolute", right: 0, top: "calc(100% + 6px)", background: "#fff", borderRadius: 12, border: "1px solid #e2e8f0", boxShadow: "0 8px 28px rgba(0,0,0,0.13)", zIndex: 200, minWidth: 180, overflow: "hidden" }}>
+                          <button
+                            onMouseDown={() => { setSelectDeleteMode(true); setDeleteDropdownOpen(false); }}
+                            style={{ width: "100%", padding: "12px 16px", background: "transparent", border: "none", borderBottom: "1px solid #f1f5f9", cursor: "pointer", fontSize: 14, fontWeight: 700, color: "#1e293b", display: "flex", alignItems: "center", gap: 8, textAlign: "left" }}
+                          >
+                            <i className="bi bi-check2-square" style={{ color: "#3b82f6", fontSize: 15 }} /> เลือกลบโครงการ
+                          </button>
+                          <button
+                            onMouseDown={() => { setConfirmDeleteAll(true); setDeleteDropdownOpen(false); }}
+                            style={{ width: "100%", padding: "12px 16px", background: "transparent", border: "none", cursor: "pointer", fontSize: 14, fontWeight: 700, color: "#ef4444", display: "flex", alignItems: "center", gap: 8, textAlign: "left" }}
+                          >
+                            <i className="bi bi-trash3-fill" style={{ fontSize: 14 }} /> ลบทั้งหมด
+                          </button>
+                        </div>
+                      )}
+                    </div>
                   )}
                 </div>
               )}
@@ -2318,9 +2415,17 @@ export default function MyPlotsPage() {
               {projectGroups.map((group, gIdx) => (
                 <div key={`${group.projectName}-${gIdx}`} style={{ position: "relative", background: "#fff", borderRadius: 24, border: "1px solid rgba(16,185,129,0.2)", overflow: "hidden", boxShadow: "0 10px 30px rgba(0,0,0,0.03)" }}>
                   {/* Project Header */}
-                  <div style={{ padding: isMobile ? "14px 16px" : "16px 24px", background: "linear-gradient(135deg,rgba(16,185,129,0.04),rgba(5,150,105,0.01))", display: "flex", flexDirection: isMobile ? "column" : "row", justifyContent: "space-between", alignItems: isMobile ? "flex-start" : "center", gap: 12 }}>
+                  <div
+                    style={{ padding: isMobile ? "14px 16px" : "16px 24px", background: selectDeleteMode ? (selectedProjectNames.has(group.projectName) ? "linear-gradient(135deg,rgba(239,68,68,0.05),rgba(239,68,68,0.02))" : "linear-gradient(135deg,rgba(16,185,129,0.04),rgba(5,150,105,0.01))") : "linear-gradient(135deg,rgba(16,185,129,0.04),rgba(5,150,105,0.01))", display: "flex", flexDirection: isMobile ? "column" : "row", justifyContent: "space-between", alignItems: isMobile ? "flex-start" : "center", gap: 12, cursor: selectDeleteMode ? "pointer" : "default", transition: "background 0.2s" }}
+                    onClick={selectDeleteMode ? () => toggleProjectSelection(group.projectName) : undefined}
+                  >
                     <div>
                       <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6 }}>
+                        {selectDeleteMode && (
+                          <div style={{ width: 22, height: 22, borderRadius: 6, border: selectedProjectNames.has(group.projectName) ? "2px solid #ef4444" : "2px solid #cbd5e1", background: selectedProjectNames.has(group.projectName) ? "#ef4444" : "#fff", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, transition: "all 0.15s" }}>
+                            {selectedProjectNames.has(group.projectName) && <i className="bi bi-check" style={{ color: "#fff", fontSize: 13, fontWeight: 900 }} />}
+                          </div>
+                        )}
                         <div style={{ width: 32, height: 32, borderRadius: "50%", background: "linear-gradient(135deg, #10b981 0%, #047857 100%)", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16, fontWeight: 900, boxShadow: "0 2px 8px rgba(16,185,129,0.35)", flexShrink: 0 }}>
                           {gIdx + 1}
                         </div>
@@ -2340,7 +2445,7 @@ export default function MyPlotsPage() {
                         <span><i className="bi bi-grid-fill me-1" style={{ color: "#10b981" }} /> {group.totalArea.toFixed(2)} ไร่</span>
                       </div>
                     </div>
-                    <div style={{ display: "flex", flexWrap: "wrap", gap: 10, width: isMobile ? "100%" : "auto" }}>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 10, width: isMobile ? "100%" : "auto" }} onClick={e => selectDeleteMode && e.stopPropagation()}>
                       <button
                         onClick={() => handleInlineEstimate(group.projectName, group.plots)}
                         disabled={estimatingProject === group.projectName}
