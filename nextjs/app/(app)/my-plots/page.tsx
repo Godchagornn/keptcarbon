@@ -1182,28 +1182,37 @@ function ProjectCarbonSummary({ plots, isMobile }: { plots: SavedPlot[]; isMobil
             {cyclePts.length > 0 && (
               <div style={{ position: "relative", display: "grid", gridTemplateColumns: "1fr 1fr", gap: isMobile ? 8 : 10 }}>
                 {cyclePts.map((pt, idx) => {
-                  const isEven = idx % 2 === 0;
+                  const displayCycle = pt.year_at === 0 ? 0 : Math.floor((pt.year_at - 1) / 7);
+                  const GREEN_THEME_COLORS = [
+                    { top: "#bef264", bot: "#84cc16", label: "#3f6212" }, // Lime
+                    { top: "#4ade80", bot: "#16a34a", label: "#14532d" }, // Mint
+                    { top: "#10b981", bot: "#059669", label: "#064e3b" }, // Emerald
+                    { top: "#059669", bot: "#047857", label: "#064e3b" }, // Forest
+                    { top: "#0d9488", bot: "#0f766e", label: "#134e4a" }, // Teal
+                  ];
+                  const col = GREEN_THEME_COLORS[Math.min(Math.max(0, displayCycle), GREEN_THEME_COLORS.length - 1)];
+                  
                   return (
                     <StatCard
                       key={pt.year_at}
                       icon="bi-graph-up-arrow"
-                      iconColor={isEven ? "#3b82f6" : "#8b5cf6"}
+                      iconColor={col.bot}
                       label={`ปีที่ ${pt.year_at} (พ.ศ. ${pt.yearBE})`}
                       value={
                         <div style={{ display: "flex", flexDirection: "column", gap: 4, marginTop: 4 }}>
                           <div style={{ fontSize: 12, color: "#64748b", fontWeight: 600, lineHeight: 1 }}>คาร์บอนเครดิต</div>
                           <div style={{ display: "flex", alignItems: "baseline", gap: 3 }}>
-                            <span style={{ fontSize: isMobile ? 18 : 20, fontWeight: 800, color: isEven ? "#1d4ed8" : "#6d28d9" }}>
+                            <span style={{ fontSize: isMobile ? 18 : 20, fontWeight: 800, color: col.bot }}>
                               {Math.floor(pt.gainValue).toLocaleString("th-TH")}
                             </span>
-                            <span style={{ fontSize: 13, color: isEven ? "#1d4ed8" : "#6d28d9", opacity: 0.8, fontWeight: 700 }}>
+                            <span style={{ fontSize: 13, color: col.bot, fontWeight: 700 }}>
                               ± {(Math.floor(pt.gainCi * 10) / 10).toLocaleString("th-TH", { minimumFractionDigits: 1, maximumFractionDigits: 1 })}
                             </span>
                             <span style={{ fontSize: 11, color: "#94a3b8", fontWeight: 500 }}>tCO₂eq</span>
                           </div>
                         </div>
                       }
-                      valueColor={isEven ? "#1d4ed8" : "#6d28d9"}
+                      valueColor={col.bot}
                     />
                   );
                 })}
