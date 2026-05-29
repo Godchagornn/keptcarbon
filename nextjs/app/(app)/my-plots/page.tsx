@@ -926,7 +926,7 @@ function PlotMiniMap({ plot, isMobile, index }: { plot: SavedPlot; isMobile: boo
         }}>
           <div style={{ fontWeight: 700, marginBottom: 2, color: "#1e293b", fontSize: isMobile ? 11 : 12, display: "flex", alignItems: "center", gap: 4 }}>
             <i className="bi bi-layers" style={{ color: "#10b981", fontSize: isMobile ? 11 : 12 }} />
-            คำอธิบาย (Land Use)
+            คำอธิบาย
           </div>
           <div style={{ fontSize: isMobile ? 9 : 10, color: "#64748b", marginBottom: isMobile ? 4 : 6, lineHeight: 1.2 }}>
             *พื้นที่ที่เลือกใช้ในการประมวลผล
