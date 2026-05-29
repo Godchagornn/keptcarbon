@@ -1169,6 +1169,12 @@ function ProjectCarbonSummary({ plots, isMobile }: { plots: SavedPlot[]; isMobil
               </div>
             </div>
 
+            {/* Processing data Header */}
+            <div style={{ fontSize: 13, fontWeight: 700, color: "#059669", display: "flex", alignItems: "center", gap: 6, marginTop: 4 }}>
+              <i className="bi bi-layers-fill" />
+              ข้อมูลที่ใช้ในการประมวลผล
+            </div>
+
             {/* Top 3 Stats grid */}
             <div style={{ position: "relative", display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "repeat(3, 1fr)", gap: isMobile ? 8 : 10 }}>
               <StatCard icon="bi-check-circle-fill" iconColor="#10b981" label="ประมวลผลแล้ว" value={`${processedCount}/${plots.length}`} unit="แปลง" valueColor="#047857" />
