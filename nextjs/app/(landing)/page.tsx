@@ -3,7 +3,6 @@ export default function Home() {
     <>
       {/* Hero Section */}
       <section id="hero" className="hero-beautiful">
-        <div className="hero-bg-grid"></div>
         <div className="container position-relative z-index-2">
           <div className="row justify-content-center text-center">
             <div
