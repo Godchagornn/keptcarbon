@@ -116,6 +116,7 @@ function MapDrawContent() {
 
   // Panel toggle state
   const [isPanelOpen, setIsPanelOpen] = useState(false);
+  const [showWelcomeHint, setShowWelcomeHint] = useState(true);
 
   // Area Validation State
   const [areaError, setAreaError] = useState<{ rai: number; sqm: number; tooSmall?: boolean } | null>(null);
@@ -2514,6 +2515,107 @@ function MapDrawContent() {
             </div>
           ))}
         </div>
+
+        {/* Welcome hint card — points at the green panel toggle button */}
+        {!isPanelOpen && showWelcomeHint && (
+          <div
+            style={{
+              position: "fixed",
+              top: "168px",
+              right: "8px",
+              zIndex: 9000,
+              width: "220px",
+              background: "#fff",
+              borderRadius: "16px",
+              boxShadow: "0 12px 40px rgba(5,150,105,0.2), 0 2px 8px rgba(0,0,0,0.1)",
+              border: "1.5px solid rgba(16,185,129,0.3)",
+              padding: "16px",
+              animation: "welcomeCardIn 0.5s cubic-bezier(0.34, 1.56, 0.64, 1)"
+            }}
+          >
+            {/* Arrow pointing up toward the green toggle button */}
+            <div style={{
+              position: "absolute", top: -9, right: 22,
+              width: 0, height: 0,
+              borderLeft: "9px solid transparent",
+              borderRight: "9px solid transparent",
+              borderBottom: "9px solid rgba(16,185,129,0.3)"
+            }} />
+            <div style={{
+              position: "absolute", top: -8, right: 23,
+              width: 0, height: 0,
+              borderLeft: "8px solid transparent",
+              borderRight: "8px solid transparent",
+              borderBottom: "8px solid #fff"
+            }} />
+
+            {/* Close */}
+            <button
+              onClick={() => setShowWelcomeHint(false)}
+              style={{
+                position: "absolute", top: 8, right: 8,
+                background: "none", border: "none", cursor: "pointer",
+                color: "#94a3b8", fontSize: 13, padding: "2px 4px",
+                lineHeight: 1, borderRadius: 4
+              }}
+            >
+              <i className="bi bi-x-lg" />
+            </button>
+
+            {/* Header */}
+            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
+              <div style={{
+                width: 38, height: 38, borderRadius: "50%",
+                background: "linear-gradient(135deg, #10b981, #059669)",
+                display: "flex", alignItems: "center", justifyContent: "center",
+                color: "#fff", fontSize: 17, flexShrink: 0,
+                boxShadow: "0 4px 12px rgba(5,150,105,0.35)"
+              }}>
+                <i className="bi bi-hand-index-thumb-fill" />
+              </div>
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 800, color: "#065f46", lineHeight: 1.2 }}>
+                  เริ่มต้นที่นี่!
+                </div>
+                <div style={{ fontSize: 11, color: "#64748b", marginTop: 2 }}>ขั้นตอนแรก</div>
+              </div>
+            </div>
+
+            <p style={{ fontSize: 12.5, color: "#475569", lineHeight: 1.6, margin: "0 0 14px", paddingRight: 8 }}>
+              กดปุ่ม{" "}
+              <span style={{
+                display: "inline-flex", alignItems: "center", justifyContent: "center",
+                background: "linear-gradient(135deg, #2d9e5f, #0d9488)",
+                color: "#fff", borderRadius: "50%", width: 18, height: 18,
+                fontSize: 9, verticalAlign: "middle"
+              }}>
+                <i className="bi bi-clipboard2-data-fill" />
+              </span>{" "}
+              <strong style={{ color: "#059669" }}>สีเขียว</strong> ด้านบนขวา เพื่อเปิดแผงและเริ่มวาดแปลงที่ดิน
+            </p>
+
+            <button
+              onClick={() => { setShowWelcomeHint(false); setIsPanelOpen(true); }}
+              style={{
+                width: "100%", padding: "9px 0", borderRadius: 10,
+                background: "linear-gradient(135deg, #10b981, #059669)",
+                color: "#fff", border: "none", fontSize: 12.5, fontWeight: 700,
+                cursor: "pointer", display: "flex", alignItems: "center",
+                justifyContent: "center", gap: 6,
+                boxShadow: "0 4px 12px rgba(5,150,105,0.3)"
+              }}
+            >
+              <i className="bi bi-clipboard2-data-fill" /> เปิดแผงเครื่องมือ
+            </button>
+
+            <style>{`
+              @keyframes welcomeCardIn {
+                from { opacity: 0; transform: translateY(-10px) scale(0.92); }
+                to { opacity: 1; transform: translateY(0) scale(1); }
+              }
+            `}</style>
+          </div>
+        )}
 
         {/* Mobile active drawing floating action bar */}
         {drawing && isMobile() && (
