@@ -27,7 +27,7 @@ const REGIONS_DATA = [
   { name: "ภาคใต้", provinces: ["สุราษฎร์ธานี"] }
 ];
 
-const cursorAddNode = "url(\"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none'><circle cx='12' cy='12' r='6' fill='%23ffffff' stroke='%233b82f6' stroke-width='2.5'/><line x1='12' y1='8' x2='12' y2='16' stroke='%233b82f6' stroke-width='2' stroke-linecap='round'/><line x1='8' y1='12' x2='16' y2='12' stroke='%233b82f6' stroke-width='2' stroke-linecap='round'/></svg>\") 12 12, cell";
+const cursorAddNode = "cell";
 
 const SNAP_PX = 15;
 

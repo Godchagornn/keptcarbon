@@ -34,8 +34,8 @@
 }
 
 /* Crosshair cursor when drawing */
-.mds-shell.drawing .mds-map-container {
-  cursor: crosshair !important;
+.mds-shell.drawing .mds-map-container canvas {
+  cursor: crosshair;
 }
 
 /* ── Search Overlay ────────────────────────────────────────── */

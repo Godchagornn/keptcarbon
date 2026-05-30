@@ -61,8 +61,8 @@ body.map-draw-active {
   z-index: 0;
 }
 
-.mds-shell.drawing .mds-map-container {
-  cursor: crosshair !important;
+.mds-shell.drawing .mds-map-container canvas {
+  cursor: crosshair;
 }
 
 /* ── Search overlay ── */
