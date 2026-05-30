@@ -238,7 +238,7 @@ function getFriendlyErrorMessage(err: unknown, plots: PlotInfo[], plotForms: Plo
 
     // Network / connection errors
     if (msg.includes("fetch") || msg.includes("NetworkError") || msg.includes("Failed to fetch")) {
-        return `ไม่สามารถเชื่อมต่อกับระบบประมวลผลคาร์บอนเครดิตได้ กรุณาตรวจสอบการเชื่อมต่ออินเทอร์เน็ตและลองอีกครั้ง${plotSuffix}`;
+        return `ไม่สามารถเชื่อมต่อกับระบบประมวลผลคาร์บอนเครดิตได้${plotSuffix}`;
     }
 
     // Other errors

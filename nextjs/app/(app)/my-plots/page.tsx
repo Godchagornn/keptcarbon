@@ -39,7 +39,7 @@ function getLuShortLabel(luClass: string, descTh?: string): string {
   if (descTh) return descTh;
   if (luClass.startsWith("A302")) return "ยางพารา";
   const p = luClass.charAt(0).toUpperCase();
-  if (p === "A") return `เกษตรกรรม (${luClass})`;
+  if (p === "A") return `พื้นที่เกษตรกรรม (${luClass})`;
   if (p === "F") return "พื้นที่ป่าไม้";
   if (p === "W") return "แหล่งน้ำ";
   if (p === "U") return "พื้นที่ชุมชนและสิ่งปลูกสร้าง";
@@ -1197,7 +1197,7 @@ function ProjectCarbonSummary({ plots, isMobile }: { plots: SavedPlot[]; isMobil
                     { top: "#0d9488", bot: "#0f766e", label: "#134e4a" }, // Teal
                   ];
                   const col = GREEN_THEME_COLORS[Math.min(Math.max(0, displayCycle), GREEN_THEME_COLORS.length - 1)];
-                  
+
                   return (
                     <StatCard
                       key={pt.year_at}
