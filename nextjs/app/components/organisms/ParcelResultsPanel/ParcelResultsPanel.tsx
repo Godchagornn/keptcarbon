@@ -1305,9 +1305,25 @@ export function ParcelResultsPanel({
                         rubber_clone: (form.variety && SUPPORTED_CLONES.includes(form.variety)) ? form.variety : null,
                         tree_count: form.treeCount ? (parseInt(form.treeCount) || null) : null,
                         spacing_system: form.spacing || null,
-                        selected_lu_classes: Object.entries(form?.luChecked || {})
-                            .filter(([, on]) => on)
-                            .map(([cls]) => cls),
+                        selected_lu_classes: (() => {
+                            const plotLuFeats = (luFeatures || []).filter(lf => {
+                                const lfProps = (lf.properties ?? {}) as any;
+                                const lfPlotIdx = lfProps.plot_index !== undefined ? parseInt(String(lfProps.plot_index)) - 1 : -1;
+                                return lfPlotIdx === i;
+                            });
+                            const detectedClasses = new Set<string>();
+                            plotLuFeats.forEach(lf => {
+                                const cls = (lf.properties as any)?.lu_class;
+                                if (cls) detectedClasses.add(cls);
+                            });
+                            const formChecked = form?.luChecked || {};
+                            const allKeys = new Set([...Object.keys(formChecked), ...Array.from(detectedClasses)]);
+                            return Array.from(allKeys).filter(k => {
+                                if (k === "A") return formChecked[k] ?? true;
+                                if (k.startsWith("A")) return formChecked[k] ?? k.includes("A302");
+                                return formChecked[k] ?? false;
+                            });
+                        })(),
                         project_type: form?.plantStatus || "existing",
                     };
                 });
@@ -1903,23 +1919,13 @@ export function ParcelResultsPanel({
                                                         const isOld = form.plantStatus === "existing";
 
                                                         // Behavior differs by plantStatus:
-                                                        // replanting: A, U, M, W, F, A-sub checkable (A302 fixed)
-                                                        // existing:   A fixed, F checkable, A-sub checkable (U,W,M displayOnly, A302 fixed)
+                                                        // All types (A, U, M, W, F, A-sub) are now checkable for both replanting and existing
                                                         const baseLU = [
-                                                            ...(isNew
-                                                                ? [{ id: "U", label: "U พื้นที่ชุมชนและสิ่งปลูกสร้าง", color: "#ef4444" }]
-                                                                : [{ id: "U", label: "U พื้นที่ชุมชนและสิ่งปลูกสร้าง", color: "#ef4444", displayOnly: true }]
-                                                            ),
-                                                            { id: "A", label: "A พื้นที่เกษตรกรรม", color: "#84cc16", fixed: true },
+                                                            { id: "U", label: "U พื้นที่ชุมชนและสิ่งปลูกสร้าง", color: "#ef4444" },
+                                                            { id: "A", label: "A พื้นที่เกษตรกรรม", color: "#84cc16", defaultChecked: true },
                                                             { id: "F", label: "F พื้นที่ป่าไม้", color: "#166534" },
-                                                            ...(isNew
-                                                                ? [{ id: "W", label: "W แหล่งน้ำ", color: "#3b82f6" }]
-                                                                : [{ id: "W", label: "W แหล่งน้ำ", color: "#3b82f6", displayOnly: true }]
-                                                            ),
-                                                            ...(isNew
-                                                                ? [{ id: "M", label: "M พื้นที่เบ็ดเตล็ด", color: "#9ca3af" }]
-                                                                : [{ id: "M", label: "M พื้นที่เบ็ดเตล็ด", color: "#9ca3af", displayOnly: true }]
-                                                            ),
+                                                            { id: "W", label: "W แหล่งน้ำ", color: "#3b82f6" },
+                                                            { id: "M", label: "M พื้นที่เบ็ดเตล็ด", color: "#9ca3af" }
                                                         ];
                                                         const displayLU: any[] = [];
                                                         baseLU.forEach(base => {
@@ -1934,11 +1940,11 @@ export function ParcelResultsPanel({
                                                                     const realSubData = plotLUData[sub];
                                                                     if (realSubData && realSubData.rai > 0) {
                                                                         const desc = realSubData.desc || "";
-                                                                        const isA302 = sub === "A302";
+                                                                        const isA302 = sub.includes("A302");
                                                                         displayLU.push({
                                                                             id: sub,
                                                                             label: desc ? `${sub} ${desc}` : sub,
-                                                                            fixed: isA302,
+                                                                            defaultChecked: isA302,
                                                                             indent: true,
                                                                             color: "#84cc16"
                                                                         });
@@ -1952,8 +1958,8 @@ export function ParcelResultsPanel({
                                                         }
 
                                                         return displayLU.map(lu => {
-                                                            const isDisabled = !form.plantStatus || lu.fixed || lu.displayOnly;
-                                                            const isChecked = lu.fixed ? true : (lu.displayOnly ? false : (form.luChecked?.[lu.id] || false));
+                                                            const isDisabled = !form.plantStatus || lu.displayOnly;
+                                                            const isChecked = lu.displayOnly ? false : (form.luChecked?.[lu.id] ?? lu.defaultChecked ?? false);
                                                             const realData = plotLUData[lu.id];
                                                             const hasArea = realData && realData.rai > 0;
                                                             return (
@@ -2006,10 +2012,11 @@ export function ParcelResultsPanel({
                                                         const isTopLevel = !k.startsWith("A");
 
                                                         if (isSubA) {
-                                                            const isChecked = k === "A302" || !!form.luChecked?.[k];
+                                                            const defaultOn = k.includes("A302");
+                                                            const isChecked = form.luChecked?.[k] ?? defaultOn;
                                                             if (isChecked) activeLeafIds.push(k);
                                                         } else if (isTopLevel) {
-                                                            const isChecked = !!form.luChecked?.[k];
+                                                            const isChecked = form.luChecked?.[k] ?? false;
                                                             if (isChecked) activeLeafIds.push(k);
                                                         }
                                                     });
