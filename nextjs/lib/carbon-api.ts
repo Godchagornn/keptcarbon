@@ -20,6 +20,7 @@ export interface StatusMessage {
     status: string;
     status_code: string;
     message: string;
+    message_th?: string;
 }
 
 export interface CarbonValue {
@@ -50,6 +51,7 @@ export interface EstimatedParamSimple {
 }
 
 export interface EstimatedParameters {
+    area_m2?: number;
     year_of_planting: EstimatedParamYear;
     rubber_clone: EstimatedParamSimple;
     tree_count: EstimatedParamSimple;
@@ -174,13 +176,9 @@ export interface DashboardDistrict {
 }
 
 export async function getDashboardRayong(): Promise<DashboardRayongResponse> {
-    const response = await fetch(`${API_BASE_URL}/dashboard/rayong-summary`);
-    if (!response.ok) throw new Error(`Dashboard API error: ${response.status}`);
-    return response.json();
+    throw new Error("Dashboard API not implemented on backend yet");
 }
 
 export async function getDashboardDistricts(): Promise<{ districts: DashboardDistrict[] }> {
-    const response = await fetch(`${API_BASE_URL}/dashboard/districts-summary`);
-    if (!response.ok) throw new Error(`Dashboard API error: ${response.status}`);
-    return response.json();
+    throw new Error("Dashboard API not implemented on backend yet");
 }

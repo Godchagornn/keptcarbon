@@ -5,10 +5,9 @@ import { useAuth } from "@/lib/auth-context";
 import { Card, Eyebrow } from "@/app/components";
 
 const HERO_BG =
-    "radial-gradient(1200px 500px at -10% -10%, rgba(16,185,129,0.20) 0%, rgba(16,185,129,0) 60%)," +
-    "radial-gradient(900px 450px at 110% 0%, rgba(59,130,246,0.18) 0%, rgba(59,130,246,0) 58%)," +
-    "radial-gradient(700px 360px at 30% 120%, rgba(245,158,11,0.12) 0%, rgba(245,158,11,0) 55%)," +
-    "linear-gradient(135deg, rgba(255,255,255,0.92) 0%, rgba(255,255,255,0.86) 100%)";
+    "radial-gradient(1000px 400px at -5% -5%, rgba(16,185,129,0.12) 0%, rgba(16,185,129,0) 60%)," +
+    "radial-gradient(800px 400px at 105% 0%, rgba(59,130,246,0.1) 0%, rgba(59,130,246,0) 58%)," +
+    "linear-gradient(135deg, rgba(255,255,255,0.95) 0%, rgba(255,255,255,0.9) 100%)";
 
 const INPUT_STYLE: React.CSSProperties = {
     borderRadius: 10,
@@ -67,7 +66,6 @@ export default function ProfilePage() {
     );
     if (!user) return null;
 
-    const initial = (user.fullname?.[0] ?? "U").toUpperCase();
     const saveDisabled = loading || !firstname || !lastname;
 
     return (
@@ -81,6 +79,7 @@ export default function ProfilePage() {
                             <img
                                 src={user.pictureUrl}
                                 alt={user.fullname}
+                                referrerPolicy="no-referrer"
                                 style={{ width: 80, height: 80, borderRadius: "50%", objectFit: "cover", flexShrink: 0, boxShadow: "0 4px 16px rgba(0,0,0,0.12)" }}
                             />
                         ) : (
@@ -88,10 +87,10 @@ export default function ProfilePage() {
                                 width: 80, height: 80, borderRadius: "50%", flexShrink: 0,
                                 background: "linear-gradient(135deg, #065f46 0%, #059669 100%)",
                                 display: "flex", alignItems: "center", justifyContent: "center",
-                                color: "white", fontSize: 32, fontWeight: 700,
+                                color: "white", fontSize: 36,
                                 boxShadow: "0 4px 16px rgba(5,150,105,0.30)",
                             }}>
-                                {initial}
+                                <i className="bi bi-person-fill"></i>
                             </div>
                         )}
                         <div style={{ flex: 1 }}>

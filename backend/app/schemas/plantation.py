@@ -74,7 +74,7 @@ class EstimatedParamSimple(BaseModel):
 
 
 class EstimatedParameters(BaseModel):
-    area_m2:float = Field(..., description="Area in square meter")
+    area_m2: float = Field(..., description="Area in square meters")
     year_of_planting: EstimatedParamYear
     rubber_clone: EstimatedParamSimple
     tree_count: EstimatedParamSimple

@@ -530,8 +530,8 @@
     }
 
     /* draw cursor */
-    .drawing #map {
-      cursor: crosshair !important;
+    .drawing #map canvas {
+      cursor: crosshair;
     }
 
     /* vertex dot */

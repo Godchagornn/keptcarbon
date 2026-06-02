@@ -34,8 +34,8 @@
 }
 
 /* Crosshair cursor when drawing */
-.mds-shell.drawing .mds-map-container {
-  cursor: crosshair !important;
+.mds-shell.drawing .mds-map-container canvas {
+  cursor: crosshair;
 }
 
 /* ── Search Overlay ────────────────────────────────────────── */
@@ -805,8 +805,10 @@
   }
 
   .mds-basemap-card {
-    bottom: 64px;
+    bottom: 120px;
     right: 12px;
+    z-index: 110;
+    width: 200px;
   }
 
   .mds-map-controls {

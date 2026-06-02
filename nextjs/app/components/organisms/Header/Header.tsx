@@ -37,6 +37,11 @@ export default function Header() {
   }, [scrolled]);
 
   useEffect(() => {
+    document.body.classList.toggle("on-home", pathname === "/");
+    return () => document.body.classList.remove("on-home");
+  }, [pathname]);
+
+  useEffect(() => {
     document.body.classList.toggle("kc-mobile-nav-active", navOpen);
   }, [navOpen]);
 
@@ -52,7 +57,7 @@ export default function Header() {
       <header id="header" className="header d-flex align-items-center fixed-top">
         <div className="container-fluid container-xl position-relative d-flex align-items-center">
           <Link href="/" className="logo d-flex align-items-center me-auto">
-            <img src="/assets/img/keptcarbon-logo.png" alt="Kept Carbon Logo" style={{ height: "52px", width: "auto" }} />
+            <img src="/assets/img/keptcarbon-logo.png" alt="Kept Carbon Logo" className="header-logo-img" />
           </Link>
 
           <nav id="navmenu" className="navmenu">
@@ -91,7 +96,7 @@ export default function Header() {
                   </Link>
                 </li>
                 <li>
-                  <Link href="/map-draw" onClick={closeNav}>
+                  <Link href="/map-draw" className={pathname.startsWith("/map-draw") ? "active" : ""} onClick={closeNav}>
                     คำนวณคาร์บอน
                   </Link>
                 </li>
@@ -130,6 +135,11 @@ export default function Header() {
                     แดชบอร์ด
                   </Link>
                 </li>
+                <li>
+                  <Link href="/map-draw" className={pathname.startsWith("/map-draw") ? "active" : ""} onClick={closeNav}>
+                    คำนวณคาร์บอน
+                  </Link>
+                </li>
               </ul>
             )}
             <i
@@ -153,6 +163,7 @@ export default function Header() {
                     <img
                       src={user.pictureUrl}
                       alt={user.fullname}
+                      referrerPolicy="no-referrer"
                       style={{
                         width: "38px",
                         height: "38px",
@@ -167,12 +178,11 @@ export default function Header() {
                         width: "38px",
                         height: "38px",
                         borderRadius: "50%",
-                        backgroundColor: "var(--color-primary, #2d9e5f)",
-                        fontWeight: "600",
-                        fontSize: "16px",
+                        backgroundColor: "var(--kc-sage-soft, #738f7d)",
+                        fontSize: "20px",
                       }}
                     >
-                      {(user.fullname?.[0] ?? "U").toUpperCase()}
+                      <i className="bi bi-person-fill"></i>
                     </div>
                   )}
                 </a>
@@ -284,7 +294,7 @@ export default function Header() {
               <Link href="/dashboard" className={`drawer-nav-item ${pathname === '/dashboard' ? 'active' : ''}`} onClick={closeNav}>
                 <i className="bi bi-grid"></i> แดชบอร์ด
               </Link>
-              <Link href="/map-draw" className={`drawer-nav-item ${pathname === '/map-draw' ? 'active' : ''}`} onClick={closeNav}>
+              <Link href="/map-draw" className={`drawer-nav-item ${pathname.startsWith('/map-draw') ? 'active' : ''}`} onClick={closeNav}>
                 <i className="bi bi-map"></i> คำนวณคาร์บอน
               </Link>
 
@@ -334,14 +344,6 @@ export default function Header() {
             </div>
           </div>
 
-          <div className="drawer-footer">
-            <i className="bi bi-leaf-fill"></i>
-            <div className="footer-title" style={{ fontSize: '13px', lineHeight: '1.5', color: '#6a7c70', textAlign: 'center' }}>
-              แพลตฟอร์มภูมิสารสนเทศและปัญญาประดิษฐ์<br />
-              เพื่อการจัดการสวนยางพารา
-            </div>
-
-          </div>
         </div>
       </div>
     </>

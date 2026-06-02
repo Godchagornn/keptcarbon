@@ -1352,6 +1352,11 @@ body.map-draw-active.scrolled .header {
   display: flex;
   flex-direction: column;
   gap: 0;
+  font-family: 'Noto Sans Thai', 'Noto Sans', system-ui, sans-serif !important;
+}
+
+.prp-shell * {
+  font-family: 'Noto Sans Thai', 'Noto Sans', system-ui, sans-serif !important;
 }
 
 /* ── Step bar ──────────────────────────────────────────────── */
@@ -2087,8 +2092,8 @@ body.map-draw-active.scrolled .header {
 }
 
 /* Crosshair cursor when drawing */
-.mds-shell.drawing .mds-map-container {
-  cursor: crosshair !important;
+.mds-shell.drawing .mds-map-container canvas {
+  cursor: crosshair;
 }
 
 /* ── Search Overlay ────────────────────────────────────────── */
