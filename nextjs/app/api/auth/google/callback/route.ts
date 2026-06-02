@@ -73,23 +73,7 @@ export async function GET(request: NextRequest) {
       [email, `google_${googleUserId?.slice(0, 8) || email}`, fullname, pictureUrl, googleUserId]
     );
 
-    let dbUser;
-    if (existing.rows.length > 0) {
-      const updated = await pool.query(
-        `UPDATE users SET google_user_id = $1, picture_url = $2, fullname = $3
-         WHERE id = $4 RETURNING id, email, role, provider`,
-        [googleSub, pictureUrl, fullname, existing.rows[0].id]
-      );
-      dbUser = updated.rows[0];
-    } else {
-      const inserted = await pool.query(
-        `INSERT INTO users (email, username, fullname, picture_url, provider, google_user_id, role)
-         VALUES ($1, $2, $3, $4, 'google', $5, 'user')
-         RETURNING id, email, role, provider`,
-        [email, `google_${googleSub?.slice(0, 8) ?? email}`, fullname, pictureUrl, googleSub]
-      );
-      dbUser = inserted.rows[0];
-    }
+    const dbUser = result.rows[0];
 
     // Issue JWT
     const token = signToken({
