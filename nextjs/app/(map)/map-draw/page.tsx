@@ -157,7 +157,7 @@ function MapDrawContent() {
   // Tab + UI
   const [tab, setTab] = useState<Tab>("draw");
   const [basemapOpen, setBasemapOpen] = useState(false);
-  const [basemap, setBasemap] = useState<"sat" | "street" | "topo">("sat");
+  const [basemap, setBasemap] = useState<"hybrid" | "sat" | "street" | "topo">("hybrid");
   const [status, setStatus] = useState("🌍 แผนที่ลูกโลก — กด \"เริ่มวาดแปลง\" เพื่อบินไปยังประเทศไทย");
   const [mapLoaded, setMapLoaded] = useState(false);
 
@@ -1032,6 +1032,14 @@ function MapDrawContent() {
         version: 8,
         glyphs: "https://fonts.openmaptiles.org/{fontstack}/{range}.pbf",
         sources: {
+          hybrid: {
+            type: "raster",
+            tiles: ["https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}"],
+            tileSize: 256,
+            minzoom: 1,
+            maxzoom: 20,
+            attribution: "© Google",
+          },
           sat: {
             type: "raster",
             tiles: ["https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}"],
@@ -1059,7 +1067,8 @@ function MapDrawContent() {
         },
         layers: [
           { id: "background", type: "background", paint: { "background-color": "#ffffff" } },
-          { id: "sat", type: "raster", source: "sat", layout: { visibility: "visible" } },
+          { id: "hybrid", type: "raster", source: "hybrid", layout: { visibility: "visible" } },
+          { id: "sat", type: "raster", source: "sat", layout: { visibility: "none" } },
           { id: "street", type: "raster", source: "street", layout: { visibility: "none" } },
           { id: "topo", type: "raster", source: "topo", layout: { visibility: "none" } },
         ],
@@ -2713,11 +2722,11 @@ function MapDrawContent() {
   };
 
   // ===== BASEMAP SWITCH =====
-  const switchBasemap = (mode: "sat" | "street" | "topo") => {
+  const switchBasemap = (mode: "hybrid" | "sat" | "street" | "topo") => {
     setBasemap(mode);
     const map = mapRef.current;
     if (!map) return;
-    (["sat", "street", "topo"] as const).forEach((m) => {
+    (["hybrid", "sat", "street", "topo"] as const).forEach((m) => {
       if (map.getLayer(m)) {
         map.setLayoutProperty(m, "visibility", m === mode ? "visible" : "none");
       }
@@ -2851,14 +2860,16 @@ function MapDrawContent() {
             <span><i className="bi bi-layers me-1" /> แผนที่</span>
             <i className="bi bi-x" style={{ cursor: "pointer", fontSize: 18 }} onClick={() => setBasemapOpen(false)} />
           </div>
-          {(["sat", "street", "topo"] as const).map((m) => (
+          {(["hybrid", "sat", "street", "topo"] as const).map((m) => (
             <div
               key={m}
               className={`mds-basemap-option${basemap === m ? " active" : ""}`}
               onClick={() => switchBasemap(m)}
             >
-              <i className={m === "sat" ? "bi bi-globe-asia-australia" : m === "street" ? "bi bi-map" : "bi bi-tree"} />
-              {m === "sat" ? "ดาวเทียม" : m === "street" ? "ถนน " : "ภูมิประเทศ"}
+              <i className={(m === "hybrid" || m === "sat") ? "bi bi-globe-asia-australia" : m === "street" ? "bi bi-map" : "bi bi-tree"} />
+              {m === "hybrid" ? (
+                <span>ดาวเทียม <br/>(Google map)</span>
+              ) : m === "sat" ? "ดาวเทียม (ดั้งเดิม)" : m === "street" ? "ถนน " : "ภูมิประเทศ"}
             </div>
           ))}
         </div>
