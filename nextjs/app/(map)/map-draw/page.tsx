@@ -2254,6 +2254,15 @@ function MapDrawContent() {
     setDrawnParcels([]);
     setPlotsSaved(false);
     setProjectType(null);
+    setCoordLat("");
+    setCoordLng("");
+    setCoordE("");
+    setCoordN("");
+    setCoordUtmZone(47);
+    setSelectedRegion("");
+    setSelectedProvince("");
+    setSelectedAmphoe("");
+    setSelectedTambon("");
     const map = mapRef.current;
     if (map && mapLoadedRef.current) {
       (map.getSource("draw-line") as maplibregl.GeoJSONSource | undefined)?.setData(emptyFC());
