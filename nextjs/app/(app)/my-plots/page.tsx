@@ -36,14 +36,12 @@ function getLuColor(luClass: string): string {
 }
 
 function getLuShortLabel(luClass: string, descTh?: string): string {
-  if (descTh) return descTh;
-  if (luClass.startsWith("A302")) return "ยางพารา";
-  const p = luClass.charAt(0).toUpperCase();
-  if (p === "A") return `พื้นที่เกษตรกรรม (${luClass})`;
-  if (p === "F") return "พื้นที่ป่าไม้";
-  if (p === "W") return "แหล่งน้ำ";
-  if (p === "U") return "พื้นที่ชุมชนและสิ่งปลูกสร้าง";
-  if (p === "M") return "พื้นที่เบ็ดเตล็ด";
+  if (luClass === "A") return "A พื้นที่เกษตรกรรม";
+  if (luClass === "F") return "F พื้นที่ป่าไม้";
+  if (luClass === "W") return "W แหล่งน้ำ";
+  if (luClass === "U") return "U พื้นที่ชุมชนและสิ่งปลูกสร้าง";
+  if (luClass === "M") return "M พื้นที่เบ็ดเตล็ด";
+  if (descTh) return descTh.startsWith(luClass) ? descTh : `${luClass} ${descTh}`;
   return luClass;
 }
 
@@ -952,7 +950,7 @@ function PlotMiniMap({ plot, isMobile, index }: { plot: SavedPlot; isMobile: boo
                 overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
                 maxWidth: isMobile ? 128 : 168,
               }}>
-                <span style={{ fontWeight: 700 }}>{item.code}</span> {item.label}
+                <span style={{ fontWeight: 700 }}>{item.code}</span> {item.label.startsWith(item.code) ? item.label.slice(item.code.length).trim() : item.label}
               </span>
             </div>
           ))}

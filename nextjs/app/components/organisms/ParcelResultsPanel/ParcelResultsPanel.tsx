@@ -677,7 +677,7 @@ export function ParcelResultsPanel({
                 }
             }
             if (aRai > 0) {
-                data["A"] = { rai: aRai, pct: aPct, desc: "พื้นที่เกษตรกรรม" };
+                data["A"] = { rai: aRai, pct: aPct, desc: data["A"]?.desc || LU_DESC_MAP["A"] };
             }
 
             const parentKeys = ["A", "U", "F", "W", "M"];
@@ -1148,12 +1148,12 @@ export function ParcelResultsPanel({
                 Object.entries(classM2s).forEach(([cls, m2]) => {
                     const rai = m2 / 1600;
                     const pct = totalPlotSelectedM2 > 0 ? (m2 / totalPlotSelectedM2) * 100 : 0;
+                    const isRoot = ["A", "U", "F", "W", "M"].includes(cls);
+                    const desc = isRoot ? LU_DESC_MAP[cls] : (classDescs[cls] || LU_DESC_MAP[cls] || "");
                     luBreakdown[cls] = {
                         rai: Math.round(rai * 100) / 100,
                         pct: Math.round(pct * 10) / 10,
-                        desc: cls.startsWith("A") && cls !== "A"
-                            ? (classDescs[cls] || "")
-                            : (LU_DESC_MAP[cls] || cls)
+                        desc: desc ? (desc.startsWith(cls) ? desc : `${cls} ${desc}`) : cls
                     };
                 });
 
@@ -1986,18 +1986,19 @@ export function ParcelResultsPanel({
                                                         // Behavior differs by plantStatus:
                                                         // All types (A, U, M, W, F, A-sub) are now checkable for both replanting and existing
                                                         const baseLU = [
-                                                            { id: "U", label: "U พื้นที่ชุมชนและสิ่งปลูกสร้าง", color: "#ef4444" },
-                                                            { id: "A", label: "A พื้นที่เกษตรกรรม", color: "#84cc16", defaultChecked: true },
-                                                            { id: "F", label: "F พื้นที่ป่าไม้", color: "#166534" },
-                                                            { id: "W", label: "W แหล่งน้ำ", color: "#3b82f6" },
-                                                            { id: "M", label: "M พื้นที่เบ็ดเตล็ด", color: "#9ca3af" }
+                                                            { id: "U", color: "#ef4444" },
+                                                            { id: "A", color: "#84cc16", defaultChecked: true },
+                                                            { id: "F", color: "#166534" },
+                                                            { id: "W", color: "#3b82f6" },
+                                                            { id: "M", color: "#9ca3af" }
                                                         ];
                                                         const displayLU: any[] = [];
                                                         baseLU.forEach(base => {
                                                             // Only show types that were detected by the API
                                                             const hasBase = plotLUData[base.id] && plotLUData[base.id].rai > 0;
                                                             if (!hasBase) return;
-                                                            displayLU.push({ ...base });
+                                                            const desc = LU_DESC_MAP[base.id];
+                                                            displayLU.push({ ...base, label: desc ? (desc.startsWith(base.id) ? desc : `${base.id} ${desc}`) : base.id });
 
                                                             if (base.id === "A") {
                                                                 const aSubtypes = Object.keys(plotLUData).filter(k => k.startsWith("A") && k !== "A").sort();
@@ -2008,7 +2009,7 @@ export function ParcelResultsPanel({
                                                                         const isA302 = sub.includes("A302");
                                                                         displayLU.push({
                                                                             id: sub,
-                                                                            label: desc ? `${sub} ${desc}` : sub,
+                                                                            label: desc ? (desc.startsWith(sub) ? desc : `${sub} ${desc}`) : sub,
                                                                             defaultChecked: isA302,
                                                                             indent: true,
                                                                             color: "#84cc16"
