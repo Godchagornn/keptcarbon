@@ -1920,11 +1920,17 @@ export function ParcelResultsPanel({
                                                         className="prp-input"
                                                         style={{ marginBottom: 0, height: 46, borderRadius: 10, border: "1.5px solid #e2e8f0", padding: "0 12px" }}
                                                         type="number"
-                                                        step="1"
+                                                        step="any"
                                                         min="0"
                                                         placeholder="ระบุจำนวนต้น"
                                                         value={form.treeCount}
-                                                        onChange={e => updateForm(i, "treeCount", e.target.value.replace(/\D/g, ''))}
+                                                        onChange={e => updateForm(i, "treeCount", e.target.value)}
+                                                        onBlur={e => {
+                                                            const val = parseFloat(e.target.value);
+                                                            if (!isNaN(val)) {
+                                                                updateForm(i, "treeCount", Math.round(val).toString());
+                                                            }
+                                                        }}
                                                         disabled={!form.plantStatus}
                                                     />
                                                 </div>

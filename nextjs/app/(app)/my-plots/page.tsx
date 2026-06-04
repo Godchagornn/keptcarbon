@@ -659,8 +659,16 @@ function EditPlotModal({ plot, index, onClose, onSave, isMobile }: { plot: Saved
               <div style={{ position: "relative" }}>
                 <input
                   type="number"
+                  step="1"
+                  min="0"
                   value={formData.trees}
-                  onChange={e => setFormData(f => ({ ...f, trees: e.target.value }))}
+                  onKeyDown={e => {
+                    if (['.', 'e', 'E', '+', '-'].includes(e.key)) e.preventDefault();
+                  }}
+                  onChange={e => {
+                    const val = e.target.value.split('.')[0].replace(/\D/g, '');
+                    setFormData(f => ({ ...f, trees: val }));
+                  }}
                   placeholder="ระบุจำนวนต้น"
                   style={{
                     width: "100%", height: 46, padding: "0 52px 0 14px",
