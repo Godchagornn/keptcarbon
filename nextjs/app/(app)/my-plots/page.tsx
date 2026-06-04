@@ -659,8 +659,16 @@ function EditPlotModal({ plot, index, onClose, onSave, isMobile }: { plot: Saved
               <div style={{ position: "relative" }}>
                 <input
                   type="number"
+                  step="1"
+                  min="0"
                   value={formData.trees}
-                  onChange={e => setFormData(f => ({ ...f, trees: e.target.value }))}
+                  onKeyDown={e => {
+                    if (['.', 'e', 'E', '+', '-'].includes(e.key)) e.preventDefault();
+                  }}
+                  onChange={e => {
+                    const val = e.target.value.split('.')[0].replace(/\D/g, '');
+                    setFormData(f => ({ ...f, trees: val }));
+                  }}
                   placeholder="ระบุจำนวนต้น"
                   style={{
                     width: "100%", height: 46, padding: "0 52px 0 14px",
@@ -993,8 +1001,8 @@ function ProjectCarbonSummary({ plots, isMobile }: { plots: SavedPlot[]; isMobil
     const validYearBESet = new Set(validYearBEs);
 
     const age28Years = allPtsArrays.map(pts => {
-        const item28 = pts.find(p => p.age === 28 && p.isAgeValid);
-        return item28 ? item28.yearBE : pts[pts.length - 1].yearBE;
+      const item28 = pts.find(p => p.age === 28 && p.isAgeValid);
+      return item28 ? item28.yearBE : pts[pts.length - 1].yearBE;
     });
     const initialMaxYearBE = Math.min(...age28Years);
 
@@ -1231,8 +1239,7 @@ function ProjectCarbonSummary({ plots, isMobile }: { plots: SavedPlot[]; isMobil
   );
 }
 
-function PlotCard({ plot, index, onDelete, onEdit, expanded, onToggle, isMobile, maxYearBE }: { plot: SavedPlot; index: number; onDelete: () => void; onEdit?: (p: SavedPlot, i: number) => void; expanded: boolean; onToggle: () => void; isMobile: boolean; maxYearBE?: number }) {
-  const [confirmDelete, setConfirmDelete] = useState(false);
+function PlotCard({ plot, index, onDelete, onDeleteClick, onEdit, expanded, onToggle, isMobile, maxYearBE }: { plot: SavedPlot; index: number; onDelete: () => void; onDeleteClick?: (p: SavedPlot, i: number) => void; onEdit?: (p: SavedPlot, i: number) => void; expanded: boolean; onToggle: () => void; isMobile: boolean; maxYearBE?: number }) {
   const [activeTab, setActiveTab] = useState<"map" | "carbon">("map");
   const [expandYears, setExpandYears] = useState(false);
   const [expandNotes, setExpandNotes] = useState(false);
@@ -1305,10 +1312,10 @@ function PlotCard({ plot, index, onDelete, onEdit, expanded, onToggle, isMobile,
   const isTreeCountFromUser = !!form?.treeCount;
 
   const getSourceText = (source?: string | null, isFromUserFallback?: boolean) => {
-    if (!source) return isFromUserFallback ? "" : "(ประเมินโดยระบบ)";
+    if (!source) return isFromUserFallback ? "" : "(คำนวณจากระบบ)";
     if (source.includes("default")) return "(ค่าเริ่มต้น)";
     if (source.includes("user input") || source.includes("user_input")) return "";
-    return "(ประเมินโดยระบบ)";
+    return "(คำนวณจากระบบ)";
   };
 
   const displayVariety = ep?.rubber_clone?.value ? String(ep.rubber_clone.value) : (form?.variety || plot.variety || "");
@@ -1393,43 +1400,33 @@ function PlotCard({ plot, index, onDelete, onEdit, expanded, onToggle, isMobile,
 
         {/* Action buttons */}
         <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
-          {!confirmDelete ? (
-            <>
-              <Link
-                href={`/map-draw?project=${encodeURIComponent(plot.name)}&action=calc&plotId=${plot.id}`}
-                title="แก้ไขขอบเขตแปลง"
-                style={{ width: 34, height: 34, borderRadius: 9, background: "rgba(16,185,129,0.07)", color: "#10b981", border: "none", cursor: "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center", textDecoration: "none", transition: "background 0.15s" }}
-                onMouseEnter={e => { e.currentTarget.style.background = "rgba(16,185,129,0.14)"; }}
-                onMouseLeave={e => { e.currentTarget.style.background = "rgba(16,185,129,0.07)"; }}
-              >
-                <i className="bi bi-pin-map" style={{ fontSize: 14 }} />
-              </Link>
-              <button
-                onClick={() => onEdit?.(plot, index)}
-                title="แก้ไข"
-                style={{ width: 34, height: 34, borderRadius: 9, background: "#f1f5f9", color: "#475569", border: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", transition: "background 0.15s" }}
-                onMouseEnter={e => { e.currentTarget.style.background = "#e2e8f0"; }}
-                onMouseLeave={e => { e.currentTarget.style.background = "#f1f5f9"; }}
-              >
-                <i className="bi bi-pencil-square" style={{ fontSize: 14 }} />
-              </button>
-              <button
-                onClick={() => setConfirmDelete(true)}
-                title="ลบ"
-                style={{ width: 34, height: 34, borderRadius: 9, background: "rgba(239,68,68,0.07)", color: "#ef4444", border: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", transition: "background 0.15s" }}
-                onMouseEnter={e => { e.currentTarget.style.background = "rgba(239,68,68,0.14)"; }}
-                onMouseLeave={e => { e.currentTarget.style.background = "rgba(239,68,68,0.07)"; }}
-              >
-                <i className="bi bi-trash3" style={{ fontSize: 14 }} />
-              </button>
-            </>
-          ) : (
-            <div style={{ display: "flex", gap: 5, alignItems: "center" }}>
-              <span style={{ fontSize: 14, color: "#ef4444", fontWeight: 700, whiteSpace: "nowrap" }}>ยืนยันลบ?</span>
-              <button onClick={onDelete} style={{ padding: "5px 12px", background: "#ef4444", color: "#fff", border: "none", borderRadius: 8, cursor: "pointer", fontWeight: 700, fontSize: 14 }}>ลบ</button>
-              <button onClick={() => setConfirmDelete(false)} style={{ padding: "5px 10px", background: "#f1f5f9", color: "#64748b", border: "none", borderRadius: 8, cursor: "pointer", fontSize: 14 }}>ยกเลิก</button>
-            </div>
-          )}
+          <Link
+            href={`/map-draw?project=${encodeURIComponent(plot.name)}&action=calc&plotId=${plot.id}`}
+            title="แก้ไขขอบเขตแปลง"
+            style={{ width: 34, height: 34, borderRadius: 9, background: "rgba(16,185,129,0.07)", color: "#10b981", border: "none", cursor: "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center", textDecoration: "none", transition: "background 0.15s" }}
+            onMouseEnter={e => { e.currentTarget.style.background = "rgba(16,185,129,0.14)"; }}
+            onMouseLeave={e => { e.currentTarget.style.background = "rgba(16,185,129,0.07)"; }}
+          >
+            <i className="bi bi-pin-map" style={{ fontSize: 14 }} />
+          </Link>
+          <button
+            onClick={() => onEdit?.(plot, index)}
+            title="แก้ไข"
+            style={{ width: 34, height: 34, borderRadius: 9, background: "#f1f5f9", color: "#475569", border: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", transition: "background 0.15s" }}
+            onMouseEnter={e => { e.currentTarget.style.background = "#e2e8f0"; }}
+            onMouseLeave={e => { e.currentTarget.style.background = "#f1f5f9"; }}
+          >
+            <i className="bi bi-pencil-square" style={{ fontSize: 14 }} />
+          </button>
+          <button
+            onClick={() => onDeleteClick ? onDeleteClick(plot, index) : onDelete()}
+            title="ลบ"
+            style={{ width: 34, height: 34, borderRadius: 9, background: "rgba(239,68,68,0.07)", color: "#ef4444", border: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", transition: "background 0.15s" }}
+            onMouseEnter={e => { e.currentTarget.style.background = "rgba(239,68,68,0.14)"; }}
+            onMouseLeave={e => { e.currentTarget.style.background = "rgba(239,68,68,0.07)"; }}
+          >
+            <i className="bi bi-trash3" style={{ fontSize: 14 }} />
+          </button>
         </div>
       </div>
 
@@ -1572,11 +1569,11 @@ function PlotCard({ plot, index, onDelete, onEdit, expanded, onToggle, isMobile,
                         ปีที่เริ่มปลูกที่ใช้ในการคำนวณ{" "}
                         {userEnteredYear ? (
                           <span style={{ color: "#059669", fontWeight: 600 }}>
-                            (1 ปี:ข้อมูลที่ผู้ใช้ระบุ)
+                            (1 ปี: ข้อมูลที่ผู้ใช้ระบุ)
                           </span>
                         ) : yearBoxItems.length > 0 ? (
                           <span style={{ color: "#059669", fontWeight: 600 }}>
-                            ({yearBoxItems.length} ปี:ข้อมูลอ้างอิงจากระบบ)
+                            ({yearBoxItems.length} ปี: ข้อมูลอ้างอิงจากระบบ)
                           </span>
                         ) : (
                           <span style={{ color: "#059669", fontWeight: 600 }}>
@@ -1711,10 +1708,10 @@ export default function MyPlotsPage() {
   const [viewMode, setViewMode] = useState<"mine" | "all">("mine");
   const [displayMode, setDisplayMode] = useState<"list" | "map">("list");
   const [isMobile, setIsMobile] = useState(false);
-  const [deleteDropdownOpen, setDeleteDropdownOpen] = useState(false);
-  const [selectDeleteMode, setSelectDeleteMode] = useState(false);
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [deleteMode, setDeleteMode] = useState(false);
   const [selectedProjectNames, setSelectedProjectNames] = useState<Set<string>>(new Set());
-  const [confirmDeleteSelected, setConfirmDeleteSelected] = useState(false);
+  const [plotToDelete, setPlotToDelete] = useState<{ plot: SavedPlot; index: number } | null>(null);
   const [errorModalMsg, setErrorModalMsg] = useState<string | null>(null);
 
   const isAdmin = user?.role === "admin";
@@ -1817,14 +1814,8 @@ export default function MyPlotsPage() {
   const handleDeleteSelected = () => {
     selectedProjectNames.forEach(name => handleDeleteProject(name));
     setSelectedProjectNames(new Set());
-    setSelectDeleteMode(false);
-    setConfirmDeleteSelected(false);
-  };
-
-  const exitSelectMode = () => {
-    setSelectDeleteMode(false);
-    setSelectedProjectNames(new Set());
-    setConfirmDeleteSelected(false);
+    setIsDeleteModalOpen(false);
+    setDeleteMode(false);
   };
 
   const toggleProjectSelection = (projectName: string) => {
@@ -2307,90 +2298,55 @@ export default function MyPlotsPage() {
             <div style={{ display: "flex", gap: isMobile ? 6 : 10, alignItems: "center", flexShrink: 0 }}>
 
               {plots.length > 0 && (
-                <div style={{ position: "relative" }}>
-                  {selectDeleteMode ? (
-                    <div style={{ display: "flex", gap: 7, alignItems: "center" }}>
-                      {selectedProjectNames.size > 0 ? (
-                        confirmDeleteSelected ? (
-                          <>
-                            <span style={{ fontSize: isMobile ? 13 : 14, color: "#ef4444", fontWeight: 700, whiteSpace: "nowrap" }}>
-                              ลบ {selectedProjectNames.size} โครงการ?
-                            </span>
-                            <button
-                              onClick={handleDeleteSelected}
-                              style={{ padding: "6px 12px", background: "#ef4444", color: "#fff", border: "none", borderRadius: 8, cursor: "pointer", fontWeight: 700, fontSize: 14 }}
-                            >ยืนยัน</button>
-                            <button
-                              onClick={() => setConfirmDeleteSelected(false)}
-                              style={{ padding: "6px 10px", background: "rgba(0,0,0,0.06)", color: "#64748b", border: "none", borderRadius: 8, cursor: "pointer", fontSize: 14, fontWeight: 600 }}
-                            >ยกเลิก</button>
-                          </>
-                        ) : (
-                          <>
-                            <button
-                              onClick={() => setConfirmDeleteSelected(true)}
-                              style={{ padding: isMobile ? "6px 10px" : "7px 13px", background: "#ef4444", color: "#fff", border: "none", borderRadius: 9, cursor: "pointer", fontSize: 14, fontWeight: 700, display: "flex", alignItems: "center", gap: 5 }}
-                            >
-                              <i className="bi bi-trash3-fill" style={{ fontSize: 13 }} /> ลบที่เลือก ({selectedProjectNames.size})
-                            </button>
-                            <button
-                              onClick={exitSelectMode}
-                              style={{ padding: "7px 11px", background: "rgba(0,0,0,0.06)", color: "#64748b", border: "none", borderRadius: 9, cursor: "pointer", fontSize: 14, fontWeight: 600 }}
-                            >ยกเลิก</button>
-                          </>
-                        )
-                      ) : (
-                        <>
-                          <span style={{ fontSize: 13, color: "#64748b", whiteSpace: "nowrap" }}>
-                            <i className="bi bi-check2-square" style={{ marginRight: 4 }} />เลือกโครงการ
-                          </span>
-                          <button
-                            onClick={exitSelectMode}
-                            style={{ padding: "6px 10px", background: "rgba(0,0,0,0.06)", color: "#64748b", border: "none", borderRadius: 8, cursor: "pointer", fontSize: 14, fontWeight: 600 }}
-                          >ยกเลิก</button>
-                        </>
-                      )}
-                    </div>
-                  ) : confirmDeleteAll ? (
-                    <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                      <span style={{ fontSize: 15, color: "#ef4444", fontWeight: 700 }}>ลบทั้งหมด?</span>
-                      <button
-                        onClick={handleDeleteAll}
-                        style={{ padding: "6px 14px", background: "#ef4444", color: "#fff", border: "none", borderRadius: 8, cursor: "pointer", fontWeight: 700, fontSize: 15 }}
-                      >ยืนยัน</button>
-                      <button
-                        onClick={() => setConfirmDeleteAll(false)}
-                        style={{ padding: "6px 14px", background: "rgba(0,0,0,0.06)", color: "#64748b", border: "none", borderRadius: 8, cursor: "pointer", fontSize: 15, fontWeight: 600 }}
-                      >ยกเลิก</button>
-                    </div>
+                <div style={{ position: "relative", display: "flex", gap: 12, alignItems: "center" }}>
+                  {!deleteMode ? (
+                    <button
+                      onClick={() => setDeleteMode(true)}
+                      style={{ width: 38, height: 38, padding: 0, background: "rgba(239,68,68,0.1)", color: "#ef4444", border: "1px solid rgba(239,68,68,0.2)", borderRadius: 10, cursor: "pointer", fontSize: 16, display: "flex", alignItems: "center", justifyContent: "center", transition: "all 0.2s" }}
+                      title="ลบโครงการ"
+                    >
+                      <i className="bi bi-trash3-fill" />
+                    </button>
                   ) : (
-                    <div style={{ position: "relative" }}>
+                    <>
+                      <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", padding: "8px 12px", background: selectedProjectNames.size === projectGroups.length && projectGroups.length > 0 ? "rgba(239,68,68,0.05)" : "#fff", borderRadius: 10, border: selectedProjectNames.size === projectGroups.length && projectGroups.length > 0 ? "1px solid rgba(239,68,68,0.2)" : "1px solid #e2e8f0", transition: "all 0.2s" }}>
+                        <div style={{ width: 18, height: 18, borderRadius: 5, border: selectedProjectNames.size === projectGroups.length && projectGroups.length > 0 ? "2px solid #ef4444" : "2px solid #cbd5e1", background: selectedProjectNames.size === projectGroups.length && projectGroups.length > 0 ? "#ef4444" : "#fff", display: "flex", alignItems: "center", justifyContent: "center", transition: "all 0.15s" }}>
+                          {selectedProjectNames.size === projectGroups.length && projectGroups.length > 0 && <i className="bi bi-check" style={{ color: "#fff", fontSize: 14, fontWeight: 900 }} />}
+                        </div>
+                        <input
+                          type="checkbox"
+                          style={{ display: "none" }}
+                          checked={selectedProjectNames.size === projectGroups.length && projectGroups.length > 0}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              setSelectedProjectNames(new Set(projectGroups.map(g => g.projectName)));
+                            } else {
+                              setSelectedProjectNames(new Set());
+                            }
+                          }}
+                        />
+                        <span style={{ fontSize: 14, fontWeight: 700, color: selectedProjectNames.size === projectGroups.length && projectGroups.length > 0 ? "#ef4444" : "#64748b" }}>เลือกทั้งหมด</span>
+                      </label>
+
                       <button
-                        onClick={() => setDeleteDropdownOpen(prev => !prev)}
-                        onBlur={() => setTimeout(() => setDeleteDropdownOpen(false), 180)}
-                        style={{ padding: isMobile ? "6px 10px" : "8px 12px", background: "rgba(239,68,68,0.1)", color: "#ef4444", border: "1px solid rgba(239,68,68,0.2)", borderRadius: 10, cursor: "pointer", fontSize: 15, fontWeight: 700, display: "flex", alignItems: "center", gap: 5, transition: "all 0.2s" }}
+                        onClick={() => {
+                          setDeleteMode(false);
+                          setSelectedProjectNames(new Set());
+                        }}
+                        style={{ padding: isMobile ? "6px 10px" : "8px 12px", background: "#f1f5f9", color: "#64748b", border: "1px solid #e2e8f0", borderRadius: 10, cursor: "pointer", fontSize: 15, fontWeight: 700, display: "flex", alignItems: "center", gap: 5, transition: "all 0.2s" }}
+                      >
+                        {!isMobile && <span>ยกเลิก</span>}
+                      </button>
+
+                      <button
+                        onClick={() => setIsDeleteModalOpen(true)}
+                        disabled={selectedProjectNames.size === 0}
+                        style={{ padding: isMobile ? "6px 10px" : "8px 12px", background: selectedProjectNames.size > 0 ? "rgba(239,68,68,0.1)" : "#f1f5f9", color: selectedProjectNames.size > 0 ? "#ef4444" : "#94a3b8", border: selectedProjectNames.size > 0 ? "1px solid rgba(239,68,68,0.2)" : "1px solid transparent", borderRadius: 10, cursor: selectedProjectNames.size > 0 ? "pointer" : "not-allowed", fontSize: 15, fontWeight: 700, display: "flex", alignItems: "center", gap: 5, transition: "all 0.2s" }}
                       >
                         <i className="bi bi-trash3-fill" style={{ fontSize: 14 }} />
-                        {!isMobile && <span>ลบ</span>}
-                        <i className="bi bi-chevron-down" style={{ fontSize: 11, opacity: 0.7 }} />
+                        {!isMobile && <span>ยืนยัน {selectedProjectNames.size > 0 && `(${selectedProjectNames.size})`}</span>}
                       </button>
-                      {deleteDropdownOpen && (
-                        <div style={{ position: "absolute", right: 0, top: "calc(100% + 6px)", background: "#fff", borderRadius: 12, border: "1px solid #e2e8f0", boxShadow: "0 8px 28px rgba(0,0,0,0.13)", zIndex: 200, minWidth: 180, overflow: "hidden" }}>
-                          <button
-                            onMouseDown={() => { setSelectDeleteMode(true); setDeleteDropdownOpen(false); }}
-                            style={{ width: "100%", padding: "12px 16px", background: "transparent", border: "none", borderBottom: "1px solid #f1f5f9", cursor: "pointer", fontSize: 14, fontWeight: 700, color: "#1e293b", display: "flex", alignItems: "center", gap: 8, textAlign: "left" }}
-                          >
-                            <i className="bi bi-check2-square" style={{ color: "#3b82f6", fontSize: 15 }} /> เลือกลบโครงการ
-                          </button>
-                          <button
-                            onMouseDown={() => { setConfirmDeleteAll(true); setDeleteDropdownOpen(false); }}
-                            style={{ width: "100%", padding: "12px 16px", background: "transparent", border: "none", cursor: "pointer", fontSize: 14, fontWeight: 700, color: "#ef4444", display: "flex", alignItems: "center", gap: 8, textAlign: "left" }}
-                          >
-                            <i className="bi bi-trash3-fill" style={{ fontSize: 14 }} /> ลบทั้งหมด
-                          </button>
-                        </div>
-                      )}
-                    </div>
+                    </>
                   )}
                 </div>
               )}
@@ -2413,13 +2369,15 @@ export default function MyPlotsPage() {
                 <div key={`${group.projectName}-${gIdx}`} style={{ position: "relative", background: "#fff", borderRadius: 24, border: "1px solid rgba(16,185,129,0.2)", overflow: "hidden", boxShadow: "0 10px 30px rgba(0,0,0,0.03)" }}>
                   {/* Project Header */}
                   <div
-                    style={{ padding: isMobile ? "14px 16px" : "16px 24px", background: selectDeleteMode ? (selectedProjectNames.has(group.projectName) ? "linear-gradient(135deg,rgba(239,68,68,0.05),rgba(239,68,68,0.02))" : "linear-gradient(135deg,rgba(16,185,129,0.04),rgba(5,150,105,0.01))") : "linear-gradient(135deg,rgba(16,185,129,0.04),rgba(5,150,105,0.01))", display: "flex", flexDirection: isMobile ? "column" : "row", justifyContent: "space-between", alignItems: isMobile ? "flex-start" : "center", gap: 12, cursor: selectDeleteMode ? "pointer" : "default", transition: "background 0.2s" }}
-                    onClick={selectDeleteMode ? () => toggleProjectSelection(group.projectName) : undefined}
+                    style={{ padding: isMobile ? "14px 16px" : "16px 24px", background: selectedProjectNames.has(group.projectName) ? "linear-gradient(135deg,rgba(239,68,68,0.05),rgba(239,68,68,0.02))" : "linear-gradient(135deg,rgba(16,185,129,0.04),rgba(5,150,105,0.01))", display: "flex", flexDirection: isMobile ? "column" : "row", justifyContent: "space-between", alignItems: isMobile ? "flex-start" : "center", gap: 12, transition: "background 0.2s" }}
                   >
                     <div>
                       <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6 }}>
-                        {selectDeleteMode && (
-                          <div style={{ width: 22, height: 22, borderRadius: 6, border: selectedProjectNames.has(group.projectName) ? "2px solid #ef4444" : "2px solid #cbd5e1", background: selectedProjectNames.has(group.projectName) ? "#ef4444" : "#fff", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, transition: "all 0.15s" }}>
+                        {deleteMode && (
+                          <div
+                            onClick={() => toggleProjectSelection(group.projectName)}
+                            style={{ width: 22, height: 22, borderRadius: 6, border: selectedProjectNames.has(group.projectName) ? "2px solid #ef4444" : "2px solid #cbd5e1", background: selectedProjectNames.has(group.projectName) ? "#ef4444" : "#fff", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, transition: "all 0.15s", cursor: "pointer", animation: "fadeIn 0.2s" }}
+                          >
                             {selectedProjectNames.has(group.projectName) && <i className="bi bi-check" style={{ color: "#fff", fontSize: 13, fontWeight: 900 }} />}
                           </div>
                         )}
@@ -2442,7 +2400,7 @@ export default function MyPlotsPage() {
                         <span><i className="bi bi-grid-fill me-1" style={{ color: "#10b981" }} /> {group.totalArea.toFixed(2)} ไร่</span>
                       </div>
                     </div>
-                    <div style={{ display: "flex", flexWrap: "wrap", gap: 10, width: isMobile ? "100%" : "auto" }} onClick={e => selectDeleteMode && e.stopPropagation()}>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 10, width: isMobile ? "100%" : "auto" }}>
                       <button
                         onClick={() => handleInlineEstimate(group.projectName, group.plots)}
                         disabled={estimatingProject === group.projectName}
@@ -2479,6 +2437,7 @@ export default function MyPlotsPage() {
                               plot={plot}
                               index={i + 1}
                               onDelete={() => handleDelete(plot.id)}
+                              onDeleteClick={(p, idx) => setPlotToDelete({ plot: p, index: idx })}
                               onEdit={(p, idx) => setEditingPlot({ plot: p, index: idx })}
                               expanded={expandedPlotId === plot.id}
                               onToggle={() => setExpandedPlotId(prev => prev === plot.id ? null : plot.id)}
@@ -2496,6 +2455,93 @@ export default function MyPlotsPage() {
           )}
         </div>
       </div>
+      {/* Delete Multiple Projects Confirmation Modal */}
+      {isDeleteModalOpen && selectedProjectNames.size > 0 && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,0.6)", backdropFilter: "blur(4px)", zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center", padding: 20, animation: "fadeIn 0.2s" }}>
+          <div style={{ background: "#fff", borderRadius: 24, width: "100%", maxWidth: 450, overflow: "hidden", boxShadow: "0 24px 48px rgba(0,0,0,0.2)", animation: "scaleUp 0.2s", display: "flex", flexDirection: "column", maxHeight: "85vh" }}>
+            {/* Header */}
+            <div style={{ padding: "20px 24px", borderBottom: "1px solid #f1f5f9", display: "flex", alignItems: "center", gap: 12 }}>
+              <div style={{ width: 40, height: 40, borderRadius: 12, background: "rgba(239,68,68,0.1)", display: "flex", alignItems: "center", justifyContent: "center", color: "#ef4444" }}>
+                <i className="bi bi-exclamation-triangle" style={{ fontSize: 20 }} />
+              </div>
+              <div style={{ flex: 1 }}>
+                <h3 style={{ margin: 0, fontSize: 18, fontWeight: 800, color: "#0f172a" }}>
+                  ยืนยันการลบ?
+                </h3>
+                <p style={{ margin: "4px 0 0", fontSize: 13, color: "#64748b" }}>
+                  การดำเนินการนี้ไม่สามารถย้อนกลับได้
+                </p>
+              </div>
+              <button onClick={() => setIsDeleteModalOpen(false)} style={{ width: 32, height: 32, borderRadius: "50%", background: "#f1f5f9", border: "none", display: "flex", alignItems: "center", justifyContent: "center", color: "#64748b", cursor: "pointer" }}>
+                <i className="bi bi-x-lg" />
+              </button>
+            </div>
+
+            {/* Body */}
+            <div style={{ padding: "20px 24px", overflowY: "auto", flex: 1 }}>
+              <div style={{ display: "flex", flexDirection: "column", gap: 16, textAlign: "center", padding: "10px 0" }}>
+                <div style={{ fontSize: 15, color: "#475569" }}>
+                  กำลังจะลบ <strong style={{ color: "#ef4444" }}>{selectedProjectNames.size}</strong> โครงการ:
+                </div>
+                <div style={{ background: "#f8fafc", borderRadius: 12, padding: "12px 16px", maxHeight: 150, overflowY: "auto", border: "1px solid #e2e8f0", textAlign: "left" }}>
+                  {Array.from(selectedProjectNames).map(name => (
+                    <div key={name} style={{ fontSize: 14, color: "#1e293b", fontWeight: 600, padding: "4px 0", borderBottom: "1px dashed #e2e8f0" }}>
+                      • {name}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div style={{ padding: "16px 24px", borderTop: "1px solid #f1f5f9", background: "#f8fafc", display: "flex", gap: 12, justifyContent: "flex-end" }}>
+              <button onClick={() => setIsDeleteModalOpen(false)} style={{ padding: "10px 20px", borderRadius: 12, border: "none", background: "#e2e8f0", color: "#475569", fontWeight: 700, fontSize: 15, cursor: "pointer", transition: "background 0.2s" }} onMouseEnter={e => e.currentTarget.style.background = "#cbd5e1"} onMouseLeave={e => e.currentTarget.style.background = "#e2e8f0"}>
+                ยกเลิก
+              </button>
+              <button
+                onClick={handleDeleteSelected}
+                style={{ padding: "10px 24px", borderRadius: 12, border: "none", background: "#ef4444", color: "#fff", fontWeight: 700, fontSize: 15, cursor: "pointer", display: "flex", alignItems: "center", gap: 6 }}
+              >
+                <i className="bi bi-trash3-fill" /> ยืนยัน
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Individual Plot Delete Confirmation Modal */}
+      {plotToDelete && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,0.6)", backdropFilter: "blur(4px)", zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center", padding: 20, animation: "fadeIn 0.2s" }}>
+          <div style={{ background: "#fff", borderRadius: 24, width: "100%", maxWidth: 400, overflow: "hidden", boxShadow: "0 24px 48px rgba(0,0,0,0.2)", animation: "scaleUp 0.2s", display: "flex", flexDirection: "column" }}>
+            <div style={{ padding: "24px", display: "flex", flexDirection: "column", alignItems: "center", textAlign: "center" }}>
+              <div style={{ width: 56, height: 56, borderRadius: 16, background: "rgba(239,68,68,0.1)", display: "flex", alignItems: "center", justifyContent: "center", color: "#ef4444", marginBottom: 16 }}>
+                <i className="bi bi-exclamation-triangle-fill" style={{ fontSize: 28 }} />
+              </div>
+              <h3 style={{ margin: "0 0 8px", fontSize: 20, fontWeight: 800, color: "#0f172a" }}>
+                ยืนยันการลบแปลงที่ {plotToDelete.index}?
+              </h3>
+              <p style={{ margin: 0, fontSize: 14, color: "#64748b", lineHeight: 1.5 }}>
+                การดำเนินการนี้ไม่สามารถย้อนกลับได้
+              </p>
+            </div>
+            <div style={{ padding: "16px 24px", borderTop: "1px solid #f1f5f9", background: "#f8fafc", display: "flex", gap: 12, justifyContent: "flex-end" }}>
+              <button onClick={() => setPlotToDelete(null)} style={{ padding: "10px 20px", borderRadius: 12, border: "none", background: "#e2e8f0", color: "#475569", fontWeight: 700, fontSize: 15, cursor: "pointer", flex: 1, transition: "background 0.2s" }} onMouseEnter={e => e.currentTarget.style.background = "#cbd5e1"} onMouseLeave={e => e.currentTarget.style.background = "#e2e8f0"}>
+                ยกเลิก
+              </button>
+              <button
+                onClick={() => {
+                  handleDelete(plotToDelete.plot.id);
+                  setPlotToDelete(null);
+                }}
+                style={{ padding: "10px 20px", borderRadius: 12, border: "none", background: "#ef4444", color: "#fff", fontWeight: 700, fontSize: 15, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 6, flex: 1 }}
+              >
+                <i className="bi bi-trash3-fill" /> ยืนยัน
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Error Modal */}
       {errorModalMsg && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center", padding: 20, animation: "fadeIn 0.2s" }}>

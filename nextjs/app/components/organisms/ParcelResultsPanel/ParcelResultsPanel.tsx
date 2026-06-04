@@ -396,10 +396,10 @@ function PlotDetailCard({
     if (!displayYearBE && cr.plantYearBE > 0) displayYearBE = cr.plantYearBE;
 
     const getSourceText = (source?: string | null, isFromUserFallback?: boolean) => {
-        if (!source) return isFromUserFallback ? "" : "(ประเมินโดยระบบ)";
+        if (!source) return isFromUserFallback ? "" : "(คำนวณจากระบบ)";
         if (source.includes("default")) return "(ค่าเริ่มต้น)";
         if (source.includes("user input") || source.includes("user_input")) return "";
-        return "(ประเมินโดยระบบ)";
+        return "(คำนวณจากระบบ)";
     };
 
     const variety = ep?.rubber_clone?.value ? String(ep.rubber_clone.value) : (form?.variety || "");
@@ -433,11 +433,11 @@ function PlotDetailCard({
                         ปีที่เริ่มปลูกที่ใช้ในการคำนวณ{" "}
                         {userEnteredYear ? (
                             <span style={{ color: "#059669", fontWeight: 600 }}>
-                                (1 ปี:ข้อมูลที่ผู้ใช้ระบุ)
+                                (1 ปี: ข้อมูลที่ผู้ใช้ระบุ)
                             </span>
                         ) : yearBoxItems.length > 0 ? (
                             <span style={{ color: "#059669", fontWeight: 600 }}>
-                                ({yearBoxItems.length} ปี:ข้อมูลอ้างอิงจากระบบ)
+                                ({yearBoxItems.length} ปี: ข้อมูลอ้างอิงจากระบบ)
                             </span>
                         ) : (
                             <span style={{ color: "#059669", fontWeight: 600 }}>
@@ -784,6 +784,10 @@ export function ParcelResultsPanel({
     const [ownerName, setOwnerName] = useState(userDisplayName);
     const [province, setProvince] = useState("");
     const [saveState, setSaveState] = useState<"idle" | "saving" | "done">("idle");
+
+    useEffect(() => {
+        setSaveState("idle");
+    }, [projectName]);
     const [dbProjectId, setDbProjectId] = useState<number | null>(null);
     const [guestUserId, setGuestUserId] = useState<string | null>(null);
     const [plotForms, setPlotForms] = useState<PlotFormData[]>([]);
@@ -820,16 +824,23 @@ export function ParcelResultsPanel({
     useEffect(() => {
         setPlotForms(prev => {
             let changed = false;
-            const next = prev.map((form) => {
-                if (form.plantStatus === "replanting") {
-                    // replanting: A and A302 are auto-checked, other classes must be checked manually
-                    if (form.luChecked.A && form.luChecked.A302) return form;
-                    changed = true;
-                    return { ...form, luChecked: { ...form.luChecked, A: true, A302: true } };
-                } else if (form.plantStatus === "existing") {
-                    // existing: only A302 is auto-checked, other sub-types must be checked manually
-                    const newChecked: Record<string, boolean> = { ...form.luChecked, A: true, A302: true };
-                    if (newChecked.A === form.luChecked.A && newChecked.A302 === form.luChecked.A302) return form;
+            const next = prev.map((form, i) => {
+                const realData = plotsLuRealData[i] || {};
+                const newChecked = { ...form.luChecked };
+                let needUpdate = false;
+
+                // Auto-check A and any class containing A302 if not explicitly unchecked
+                if (newChecked["A"] === undefined) { newChecked["A"] = true; needUpdate = true; }
+                if (newChecked["A302"] === undefined) { newChecked["A302"] = true; needUpdate = true; }
+
+                Object.keys(realData).forEach(k => {
+                    if (k.includes("A302") && newChecked[k] === undefined) {
+                        newChecked[k] = true;
+                        needUpdate = true;
+                    }
+                });
+
+                if (needUpdate) {
                     changed = true;
                     return { ...form, luChecked: newChecked };
                 }
@@ -980,12 +991,23 @@ export function ParcelResultsPanel({
         for (let idx = 0; idx < parcelFeatures.length; idx++) {
             const form = plotForms[idx];
             const checkedClasses = new Set<string>();
-            Object.entries(form?.luChecked || {}).forEach(([cls, on]) => { if (on) checkedClasses.add(cls); });
+            const formChecked = form?.luChecked || {};
+
+            allFeatsByPlot[idx].forEach(feat => {
+                const cls = ((feat.properties ?? {}) as Record<string, unknown>).lu_class as string | undefined;
+                if (cls) {
+                    let isOn = false;
+                    if (cls === "A") isOn = formChecked[cls] ?? true;
+                    else if (cls.startsWith("A")) isOn = formChecked[cls] ?? cls.includes("A302");
+                    else isOn = formChecked[cls] ?? false;
+                    if (isOn) checkedClasses.add(cls);
+                }
+            });
 
             const plotFeats = allFeatsByPlot[idx].filter(feat => {
                 const luClass = ((feat.properties ?? {}) as Record<string, unknown>).lu_class as string | undefined;
                 if (!luClass) return true; // include non-lu features as-is
-                return checkedClasses.has(luClass) || luClass === "A302"; // Force A302 just in case
+                return checkedClasses.has(luClass);
             });
             featsByPlot[idx] = plotFeats;
             // Count as valid if we have LU features OR can fall back to the drawn parcel
@@ -1030,14 +1052,23 @@ export function ParcelResultsPanel({
                 rubber_clone: (form.variety && SUPPORTED_CLONES.includes(form.variety)) ? form.variety : null,
                 tree_count: form.treeCount ? (parseInt(form.treeCount) || null) : null,
                 spacing_system: form.spacing || null,
-                selected_lu_classes: Object.entries(form?.luChecked || {})
-                    .filter(([cls, on]) => {
-                        if (!on) return false;
-                        const hasRealData = Object.keys(plotsLuRealData[idx] || {}).length > 0;
-                        if (!hasRealData) return true; // Trust the form if we have no real data
-                        return (plotsLuRealData[idx]?.[cls]?.rai ?? 0) > 0;
-                    })
-                    .map(([cls]) => cls),
+                selected_lu_classes: (() => {
+                    const luData = plotsLuRealData[idx] || {};
+                    const hasRealData = Object.keys(luData).length > 0;
+                    const formChecked = form?.luChecked || {};
+                    const allClasses = new Set([...Object.keys(formChecked), ...Object.keys(luData)]);
+                    const finalClasses: string[] = [];
+                    allClasses.forEach(cls => {
+                        let isOn = false;
+                        if (cls === "A") isOn = formChecked[cls] ?? true;
+                        else if (cls.startsWith("A")) isOn = formChecked[cls] ?? cls.includes("A302");
+                        else isOn = formChecked[cls] ?? false;
+                        if (isOn && (!hasRealData || (luData[cls]?.rai ?? 0) > 0)) {
+                            finalClasses.push(cls);
+                        }
+                    });
+                    return finalClasses;
+                })(),
                 project_type: form?.plantStatus || undefined,
             });
         }
@@ -1305,9 +1336,25 @@ export function ParcelResultsPanel({
                         rubber_clone: (form.variety && SUPPORTED_CLONES.includes(form.variety)) ? form.variety : null,
                         tree_count: form.treeCount ? (parseInt(form.treeCount) || null) : null,
                         spacing_system: form.spacing || null,
-                        selected_lu_classes: Object.entries(form?.luChecked || {})
-                            .filter(([, on]) => on)
-                            .map(([cls]) => cls),
+                        selected_lu_classes: (() => {
+                            const plotLuFeats = (luFeatures || []).filter(lf => {
+                                const lfProps = (lf.properties ?? {}) as any;
+                                const lfPlotIdx = lfProps.plot_index !== undefined ? parseInt(String(lfProps.plot_index)) - 1 : -1;
+                                return lfPlotIdx === i;
+                            });
+                            const detectedClasses = new Set<string>();
+                            plotLuFeats.forEach(lf => {
+                                const cls = (lf.properties as any)?.lu_class;
+                                if (cls) detectedClasses.add(cls);
+                            });
+                            const formChecked = form?.luChecked || {};
+                            const allKeys = new Set([...Object.keys(formChecked), ...Array.from(detectedClasses)]);
+                            return Array.from(allKeys).filter(k => {
+                                if (k === "A") return formChecked[k] ?? true;
+                                if (k.startsWith("A")) return formChecked[k] ?? k.includes("A302");
+                                return formChecked[k] ?? false;
+                            });
+                        })(),
                         project_type: form?.plantStatus || "existing",
                     };
                 });
@@ -1515,19 +1562,29 @@ export function ParcelResultsPanel({
     if (currentStep === 2) {
         const updateForm = (idx: number, field: keyof PlotFormData, val: string) => {
             setPlotForms(prev => prev.map((f, i) => i === idx ? { ...f, [field]: val } : f));
+            setSaveState("idle");
         };
         return (
-            <div className="prp-shell">
+            <div className="prp-shell" style={{ borderTop: "none", marginTop: 0, paddingTop: 0 }}>
 
 
-                <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 14 }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
                     <div className="prp-header-block" style={{ marginBottom: 0 }}>
-                        <div className="prp-main-title" style={{ fontSize: isMobile ? 16 : 18 }}>
+                        <div className="prp-main-title" style={{ fontSize: isMobile ? 16 : 18, marginBottom: 0 }}>
                             <i className="bi bi-pencil-square me-2" style={{ color: "#10b981" }} />
                             {projectName?.trim() ? `โครงการ ${projectName}` : "กรอกข้อมูลแปลง"}
                         </div>
-                        <div className="prp-subtitle">เพื่อนำไปประเมินคาร์บอนเครดิต</div>
                     </div>
+                    <button
+                        onClick={() => onBack?.()}
+                        title="ย้อนกลับขั้นตอนที่ 1"
+                        style={{ flexShrink: 0, padding: "4px 11px", fontSize: 12, fontWeight: 600, borderRadius: 999, display: "inline-flex", alignItems: "center", gap: 4, color: "#059669", border: "1px solid rgba(16,185,129,0.55)", background: "rgba(16,185,129,0.04)", cursor: "pointer", whiteSpace: "nowrap", transition: "all 0.18s", lineHeight: 1.5 }}
+                        onMouseEnter={e => { e.currentTarget.style.background = "rgba(16,185,129,0.1)"; e.currentTarget.style.borderColor = "#10b981"; }}
+                        onMouseLeave={e => { e.currentTarget.style.background = "rgba(16,185,129,0.04)"; e.currentTarget.style.borderColor = "rgba(16,185,129,0.55)"; }}
+                    >
+                        <i className="bi bi-chevron-left" style={{ fontSize: 11 }} />
+                        <span>ย้อนกลับ</span>
+                    </button>
                 </div>
 
                 {/* Action buttons (Moved to top) */}
@@ -1618,14 +1675,14 @@ export function ParcelResultsPanel({
                         </span>
                     </div>
                 )}
-                <div style={{ display: "flex", gap: isMobile ? 6 : 8, marginBottom: 16, flexWrap: "wrap", justifyContent: "stretch" }}>
+                <div style={{ display: "flex", gap: isMobile ? 6 : 8, marginBottom: 16, flexWrap: "wrap", alignItems: "stretch" }}>
                     {onDrawMore && !isDrawing && (
-                        <button className="prp-btn-ghost" disabled={drawMoreDisabled} style={{ flex: "1 1 calc(33% - 8px)", minWidth: 100, padding: isMobile ? "8px 6px" : "10px 12px", fontSize: isMobile ? 12 : 14, display: "flex", flexDirection: "row", justifyContent: "center", alignItems: "center", gap: 6, background: drawMoreDisabled ? "rgba(0,0,0,0.04)" : "rgba(16,185,129,0.1)", color: drawMoreDisabled ? "#b0bec5" : "#059669", border: `1px solid ${drawMoreDisabled ? "rgba(0,0,0,0.08)" : "rgba(16,185,129,0.2)"}`, borderRadius: isMobile ? 10 : 12, cursor: drawMoreDisabled ? "not-allowed" : "pointer", opacity: drawMoreDisabled ? 0.6 : 1 }} onClick={drawMoreDisabled ? undefined : onDrawMore}>
+                        <button className="prp-btn-ghost" disabled={drawMoreDisabled} style={{ flex: isMobile ? "1 1 100%" : "1 1 calc(33% - 8px)", minWidth: 100, padding: isMobile ? "8px 6px" : "10px 12px", fontSize: isMobile ? 12 : 14, display: "flex", flexDirection: "row", justifyContent: "center", alignItems: "center", gap: 6, background: drawMoreDisabled ? "rgba(0,0,0,0.04)" : "rgba(16,185,129,0.1)", color: drawMoreDisabled ? "#b0bec5" : "#059669", border: `1px solid ${drawMoreDisabled ? "rgba(0,0,0,0.08)" : "rgba(16,185,129,0.2)"}`, borderRadius: isMobile ? 10 : 12, cursor: drawMoreDisabled ? "not-allowed" : "pointer", opacity: drawMoreDisabled ? 0.6 : 1 }} onClick={drawMoreDisabled ? undefined : onDrawMore}>
                             <i className="bi bi-pencil-square" style={{ fontSize: isMobile ? 14 : 16 }} /> <span style={{ fontWeight: 600, textAlign: "center", whiteSpace: "nowrap" }}>วาดแปลงเพิ่ม</span>
                         </button>
                     )}
                     {onCancelDraw && isDrawing && (
-                        <button className="prp-btn-ghost" style={{ flex: "1 1 calc(33% - 8px)", minWidth: 100, padding: isMobile ? "8px 6px" : "10px 12px", fontSize: isMobile ? 12 : 14, display: "flex", flexDirection: "row", justifyContent: "center", alignItems: "center", gap: 6, background: "rgba(239,68,68,0.1)", color: "#ef4444", border: "1px solid rgba(239,68,68,0.2)", borderRadius: isMobile ? 10 : 12 }} onClick={onCancelDraw}>
+                        <button className="prp-btn-ghost" style={{ flex: isMobile ? "1 1 100%" : "1 1 calc(33% - 8px)", minWidth: 100, padding: isMobile ? "8px 6px" : "10px 12px", fontSize: isMobile ? 12 : 14, display: "flex", flexDirection: "row", justifyContent: "center", alignItems: "center", gap: 6, background: "rgba(239,68,68,0.1)", color: "#ef4444", border: "1px solid rgba(239,68,68,0.2)", borderRadius: isMobile ? 10 : 12 }} onClick={onCancelDraw}>
                             <i className="bi bi-x-circle" style={{ fontSize: isMobile ? 14 : 16 }} /> <span style={{ fontWeight: 600, textAlign: "center", whiteSpace: "nowrap" }}>ยกเลิกการวาด</span>
                         </button>
                     )}
@@ -1634,9 +1691,9 @@ export function ParcelResultsPanel({
                         onClick={() => handleSave([])}
                         disabled={!user || !projectName.trim() || isDuplicateProjectName || saveState === "saving"}
                         style={{
-                            flex: "1 1 calc(33% - 8px)", minWidth: 110, padding: isMobile ? "8px 6px" : "10px 12px", fontSize: isMobile ? 12 : 14, display: "flex", flexDirection: "row", justifyContent: "center", alignItems: "center", gap: 6,
+                            flex: isMobile ? "1 1 calc(50% - 4px)" : "1 1 calc(33% - 8px)", minWidth: 110, padding: isMobile ? "8px 6px" : "10px 12px", fontSize: isMobile ? 12 : 14, display: "flex", flexDirection: "row", justifyContent: "center", alignItems: "center", gap: 6,
                             background: !user ? "#cbd5e1" : (saveState === "done" ? "#94a3b8" : ((projectName.trim() && !isDuplicateProjectName && !hasEmptyStatus) ? "linear-gradient(135deg,#0ea5e9,#0284c7)" : "#cbd5e1")),
-                            color: "#fff", border: "none", borderRadius: isMobile ? 10 : 12,
+                            color: "#fff", border: "1px solid transparent", borderRadius: isMobile ? 10 : 12,
                             cursor: !user ? "not-allowed" : (saveState !== "idle" ? "not-allowed" : ((projectName.trim() && !isDuplicateProjectName && !hasEmptyStatus) ? "pointer" : "not-allowed")),
                             boxShadow: !user ? "none" : (saveState === "done" ? "none" : ((projectName.trim() && !isDuplicateProjectName && !hasEmptyStatus) ? "0 4px 10px rgba(2,132,199,0.2)" : "none")),
                             opacity: !user ? 0.5 : (saveState === "done" ? 0.6 : 1),
@@ -1661,9 +1718,9 @@ export function ParcelResultsPanel({
                         }}
                         disabled={(!!user && (!projectName.trim() || isDuplicateProjectName)) || hasEmptyStatus || processingCarbon}
                         style={{
-                            flex: "1 1 calc(33% - 8px)", minWidth: 110, padding: isMobile ? "8px 6px" : "10px 12px", fontSize: isMobile ? 12 : 14, display: "flex", flexDirection: "row", justifyContent: "center", alignItems: "center", gap: 6,
+                            flex: isMobile ? "1 1 calc(50% - 4px)" : "1 1 calc(33% - 8px)", minWidth: 110, padding: isMobile ? "8px 6px" : "10px 12px", fontSize: isMobile ? 12 : 14, display: "flex", flexDirection: "row", justifyContent: "center", alignItems: "center", gap: 6,
                             background: ((!user || (projectName.trim() && !isDuplicateProjectName)) && !hasEmptyStatus && !processingCarbon) ? "linear-gradient(135deg,#10b981,#059669)" : "#cbd5e1",
-                            color: "#fff", border: "none", borderRadius: isMobile ? 10 : 12,
+                            color: "#fff", border: "1px solid transparent", borderRadius: isMobile ? 10 : 12,
                             cursor: ((!user || (projectName.trim() && !isDuplicateProjectName)) && !hasEmptyStatus && !processingCarbon) ? "pointer" : "not-allowed",
                             boxShadow: ((!user || (projectName.trim() && !isDuplicateProjectName)) && !hasEmptyStatus && !processingCarbon) ? "0 4px 10px rgba(16,185,129,0.2)" : "none"
                         }}
@@ -1749,12 +1806,20 @@ export function ParcelResultsPanel({
                                             </div>
                                             <div style={{ display: "flex", gap: 16 }}>
                                                 <div onClick={() => {
-                                                    setPlotForms(prev => prev.map((f, idx) => idx === i ? {
-                                                        ...f,
-                                                        plantStatus: "replanting",
-                                                        plantYear: String(CURRENT_BE),
-                                                        luChecked: { A: true, A302: true },
-                                                    } : f));
+                                                    setPlotForms(prev => prev.map((f, idx) => {
+                                                        if (idx !== i) return f;
+                                                        const realData = plotsLuRealData[i] || {};
+                                                        const newChecked: Record<string, boolean> = { ...f.luChecked, A: true, A302: true };
+                                                        Object.keys(realData).forEach(k => {
+                                                            if (k.includes("A302")) newChecked[k] = true;
+                                                        });
+                                                        return {
+                                                            ...f,
+                                                            plantStatus: "replanting",
+                                                            plantYear: String(CURRENT_BE),
+                                                            luChecked: newChecked,
+                                                        };
+                                                    }));
                                                     onProjectTypeChange?.("replanting");
                                                 }} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 15, cursor: "pointer", userSelect: "none" }}>
                                                     <div style={{ width: 18, height: 18, borderRadius: "50%", border: "2px solid", borderColor: form.plantStatus === "replanting" ? "#10b981" : "#cbd5e1", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, transition: "all 0.2s" }}>
@@ -1764,12 +1829,20 @@ export function ParcelResultsPanel({
                                                 </div>
                                                 <div onClick={() => {
                                                     // Auto-check A sub-types and F detected by backend for existing plots
-                                                    setPlotForms(prev => prev.map((f, idx) => idx === i ? {
-                                                        ...f,
-                                                        plantStatus: "existing",
-                                                        plantYear: "",
-                                                        luChecked: { A: true, A302: true },
-                                                    } : f));
+                                                    setPlotForms(prev => prev.map((f, idx) => {
+                                                        if (idx !== i) return f;
+                                                        const realData = plotsLuRealData[i] || {};
+                                                        const newChecked: Record<string, boolean> = { ...f.luChecked, A: true, A302: true };
+                                                        Object.keys(realData).forEach(k => {
+                                                            if (k.includes("A302")) newChecked[k] = true;
+                                                        });
+                                                        return {
+                                                            ...f,
+                                                            plantStatus: "existing",
+                                                            plantYear: "",
+                                                            luChecked: newChecked,
+                                                        };
+                                                    }));
                                                     onProjectTypeChange?.("existing");
                                                 }} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 15, cursor: "pointer", userSelect: "none" }}>
                                                     <div style={{ width: 18, height: 18, borderRadius: "50%", border: "2px solid", borderColor: form.plantStatus === "existing" ? "#10b981" : "#cbd5e1", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, transition: "all 0.2s" }}>
@@ -1847,9 +1920,17 @@ export function ParcelResultsPanel({
                                                         className="prp-input"
                                                         style={{ marginBottom: 0, height: 46, borderRadius: 10, border: "1.5px solid #e2e8f0", padding: "0 12px" }}
                                                         type="number"
-                                                        placeholder="ระบุจำนวนต้น เช่น 70"
+                                                        step="any"
+                                                        min="0"
+                                                        placeholder="ระบุจำนวนต้น"
                                                         value={form.treeCount}
                                                         onChange={e => updateForm(i, "treeCount", e.target.value)}
+                                                        onBlur={e => {
+                                                            const val = parseFloat(e.target.value);
+                                                            if (!isNaN(val)) {
+                                                                updateForm(i, "treeCount", Math.round(val).toString());
+                                                            }
+                                                        }}
                                                         disabled={!form.plantStatus}
                                                     />
                                                 </div>
@@ -1903,23 +1984,13 @@ export function ParcelResultsPanel({
                                                         const isOld = form.plantStatus === "existing";
 
                                                         // Behavior differs by plantStatus:
-                                                        // replanting: A, U, M, W, F, A-sub checkable (A302 fixed)
-                                                        // existing:   A fixed, F checkable, A-sub checkable (U,W,M displayOnly, A302 fixed)
+                                                        // All types (A, U, M, W, F, A-sub) are now checkable for both replanting and existing
                                                         const baseLU = [
-                                                            ...(isNew
-                                                                ? [{ id: "U", label: "U พื้นที่ชุมชนและสิ่งปลูกสร้าง", color: "#ef4444" }]
-                                                                : [{ id: "U", label: "U พื้นที่ชุมชนและสิ่งปลูกสร้าง", color: "#ef4444", displayOnly: true }]
-                                                            ),
-                                                            { id: "A", label: "A พื้นที่เกษตรกรรม", color: "#84cc16", fixed: true },
+                                                            { id: "U", label: "U พื้นที่ชุมชนและสิ่งปลูกสร้าง", color: "#ef4444" },
+                                                            { id: "A", label: "A พื้นที่เกษตรกรรม", color: "#84cc16", defaultChecked: true },
                                                             { id: "F", label: "F พื้นที่ป่าไม้", color: "#166534" },
-                                                            ...(isNew
-                                                                ? [{ id: "W", label: "W แหล่งน้ำ", color: "#3b82f6" }]
-                                                                : [{ id: "W", label: "W แหล่งน้ำ", color: "#3b82f6", displayOnly: true }]
-                                                            ),
-                                                            ...(isNew
-                                                                ? [{ id: "M", label: "M พื้นที่เบ็ดเตล็ด", color: "#9ca3af" }]
-                                                                : [{ id: "M", label: "M พื้นที่เบ็ดเตล็ด", color: "#9ca3af", displayOnly: true }]
-                                                            ),
+                                                            { id: "W", label: "W แหล่งน้ำ", color: "#3b82f6" },
+                                                            { id: "M", label: "M พื้นที่เบ็ดเตล็ด", color: "#9ca3af" }
                                                         ];
                                                         const displayLU: any[] = [];
                                                         baseLU.forEach(base => {
@@ -1934,11 +2005,11 @@ export function ParcelResultsPanel({
                                                                     const realSubData = plotLUData[sub];
                                                                     if (realSubData && realSubData.rai > 0) {
                                                                         const desc = realSubData.desc || "";
-                                                                        const isA302 = sub === "A302";
+                                                                        const isA302 = sub.includes("A302");
                                                                         displayLU.push({
                                                                             id: sub,
                                                                             label: desc ? `${sub} ${desc}` : sub,
-                                                                            fixed: isA302,
+                                                                            defaultChecked: isA302,
                                                                             indent: true,
                                                                             color: "#84cc16"
                                                                         });
@@ -1952,8 +2023,8 @@ export function ParcelResultsPanel({
                                                         }
 
                                                         return displayLU.map(lu => {
-                                                            const isDisabled = !form.plantStatus || lu.fixed || lu.displayOnly;
-                                                            const isChecked = lu.fixed ? true : (lu.displayOnly ? false : (form.luChecked?.[lu.id] || false));
+                                                            const isDisabled = !form.plantStatus || lu.displayOnly;
+                                                            const isChecked = lu.displayOnly ? false : (form.luChecked?.[lu.id] ?? lu.defaultChecked ?? false);
                                                             const realData = plotLUData[lu.id];
                                                             const hasArea = realData && realData.rai > 0;
                                                             return (
@@ -2006,10 +2077,11 @@ export function ParcelResultsPanel({
                                                         const isTopLevel = !k.startsWith("A");
 
                                                         if (isSubA) {
-                                                            const isChecked = k === "A302" || !!form.luChecked?.[k];
+                                                            const defaultOn = k.includes("A302");
+                                                            const isChecked = form.luChecked?.[k] ?? defaultOn;
                                                             if (isChecked) activeLeafIds.push(k);
                                                         } else if (isTopLevel) {
-                                                            const isChecked = !!form.luChecked?.[k];
+                                                            const isChecked = form.luChecked?.[k] ?? false;
                                                             if (isChecked) activeLeafIds.push(k);
                                                         }
                                                     });
@@ -2125,7 +2197,7 @@ export function ParcelResultsPanel({
                 ? Math.round(carbonResults.reduce((s, c) => s + c.age, 0) / carbonResults.length)
                 : 0;
             aggregatePts = aggregateProfiles(backendResponses, avgStartAge);
-            
+
             const profiles = backendResponses
                 .map(r => r.carbon_profile)
                 .filter((p): p is YearlyEstimate[] => Array.isArray(p) && p.length > 0);
@@ -2169,12 +2241,29 @@ export function ParcelResultsPanel({
                     </div>
                     <div style={{ flex: 1 }}>
                         <div style={{ fontSize: isMobile ? 15 : 16, fontWeight: 800, color: "#0f172a", lineHeight: 1.2 }}>
-                            ผลการประเมินผลคาร์บอนเครดิต
+                            {isMobile ? (
+                                <>ผลการประเมินผล<br />คาร์บอนเครดิต</>
+                            ) : (
+                                "ผลการประเมินผลคาร์บอนเครดิต"
+                            )}
                         </div>
                         <div style={{ fontSize: 11, color: "#64748b", marginTop: 2, fontWeight: 500 }}>
                             แสดงผลรวมและรายแปลง
                         </div>
                     </div>
+                    <button
+                        onClick={() => {
+                            setSaveState("idle");
+                            onStepChange(2);
+                        }}
+                        title="ย้อนกลับขั้นตอนที่ 2"
+                        style={{ flexShrink: 0, padding: "4px 11px", fontSize: 12, fontWeight: 600, borderRadius: 999, display: "inline-flex", alignItems: "center", gap: 4, color: "#059669", border: "1px solid rgba(16,185,129,0.55)", background: "rgba(16,185,129,0.04)", cursor: "pointer", whiteSpace: "nowrap", transition: "all 0.18s", lineHeight: 1.5 }}
+                        onMouseEnter={e => { e.currentTarget.style.background = "rgba(16,185,129,0.1)"; e.currentTarget.style.borderColor = "#10b981"; }}
+                        onMouseLeave={e => { e.currentTarget.style.background = "rgba(16,185,129,0.04)"; e.currentTarget.style.borderColor = "rgba(16,185,129,0.55)"; }}
+                    >
+                        <i className="bi bi-chevron-left" style={{ fontSize: 11 }} />
+                        <span>ย้อนกลับ</span>
+                    </button>
                 </div>
 
 

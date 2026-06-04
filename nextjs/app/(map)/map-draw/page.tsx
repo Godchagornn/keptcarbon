@@ -24,40 +24,50 @@ type Tab = "draw" | "shp";
 const REGIONS_DATA = [
   { name: "ภาคตะวันออกเฉียงเหนือ", provinces: ["บึงกาฬ"] },
   { name: "ภาคตะวันออก", provinces: ["ระยอง"] },
-  { name: "ภาคใต้", provinces: ["สุราษฎร์ธานี"] }
+  { name: "ภาคใต้", provinces: ["สุราษฎร์ธานี"] },
 ];
 
+const zoomToGeoJSONFeatures = (features: GeoJSON.Feature[], map: maplibregl.Map) => {
+  if (!features || !features.length || !map) return;
+  let minLng = 180, maxLng = -180, minLat = 90, maxLat = -90;
+  let hasCoords = false;
 
-const THAI_PROVINCES = [
-  "กระบี่", "กรุงเทพมหานคร", "กาญจนบุรี", "กาฬสินธุ์", "กำแพงเพชร",
-  "ขอนแก่น", "จันทบุรี", "ฉะเชิงเทรา", "ชลบุรี", "ชัยนาท",
-  "ชัยภูมิ", "ชุมพร", "เชียงราย", "เชียงใหม่", "ตรัง",
-  "ตราด", "ตาก", "นครนายก", "นครปฐม", "นครพนม",
-  "นครราชสีมา", "นครศรีธรรมราช", "นครสวรรค์", "นนทบุรี", "นราธิวาส",
-  "น่าน", "บึงกาฬ", "บุรีรัมย์", "ปทุมธานี", "ประจวบคีรีขันธ์",
-  "ปราจีนบุรี", "ปัตตานี", "พระนครศรีอยุธยา", "พะเยา", "พังงา",
-  "พัทลุง", "พิจิตร", "พิษณุโลก", "เพชรบุรี", "เพชรบูรณ์",
-  "แพร่", "ภูเก็ต", "มหาสารคาม", "มุกดาหาร", "แม่ฮ่องสอน",
-  "ยโสธร", "ยะลา", "ร้อยเอ็ด", "ระนอง", "ระยอง",
-  "ราชบุรี", "ลพบุรี", "ลำปาง", "ลำพูน", "เลย",
-  "ศรีสะเกษ", "สกลนคร", "สงขลา", "สตูล", "สมุทรปราการ",
-  "สมุทรสงคราม", "สมุทรสาคร", "สระแก้ว", "สระบุรี", "สิงห์บุรี",
-  "สุโขทัย", "สุพรรณบุรี", "สุราษฎร์ธานี", "สุรินทร์", "หนองคาย",
-  "หนองบัวลำภู", "อ่างทอง", "อำนาจเจริญ", "อุดรธานี", "อุตรดิตถ์",
-  "อุทัยธานี", "อุบลราชธานี"
-].sort((a, b) => a.localeCompare(b, "th"));
+  const updateBounds = (ring: number[][]) => {
+    ring.forEach(([lng, lat]) => {
+      if (lng < minLng) minLng = lng;
+      if (lng > maxLng) maxLng = lng;
+      if (lat < minLat) minLat = lat;
+      if (lat > maxLat) maxLat = lat;
+      hasCoords = true;
+    });
+  };
+
+  features.forEach(feature => {
+    if (!feature.geometry) return;
+    if (feature.geometry.type === "Polygon") {
+      (feature.geometry as GeoJSON.Polygon).coordinates.forEach(updateBounds);
+    } else if (feature.geometry.type === "MultiPolygon") {
+      (feature.geometry as GeoJSON.MultiPolygon).coordinates.forEach(poly => poly.forEach(updateBounds));
+    }
+  });
+
+  if (hasCoords) {
+    // Adding checks to prevent identical bounds error
+    if (minLng === maxLng) { minLng -= 0.01; maxLng += 0.01; }
+    if (minLat === maxLat) { minLat -= 0.01; maxLat += 0.01; }
+    map.fitBounds([[minLng, minLat], [maxLng, maxLat]], { 
+      padding: 60, 
+      duration: 2500, // Slower, smoother animation
+      essential: true 
+    });
+  }
+};
+
 
 const AMPHOE_DATA: Record<string, string[]> = {
   "บึงกาฬ": ["เมืองบึงกาฬ", "พรเจริญ", "โซ่พิสัย", "เซกา", "ปากคาด", "บึงโขงหลง", "ศรีวิไล", "บุ้งคล้า"],
   "ระยอง": ["เมืองระยอง", "บ้านฉาง", "แกลง", "วังจันทร์", "บ้านค่าย", "ปลวกแดง", "เขาชะเมา", "นิคมพัฒนา"],
   "สุราษฎร์ธานี": ["เมืองสุราษฎร์ธานี", "กาญจนดิษฐ์", "ดอนสัก", "เกาะสมุย", "เกาะพะงัน", "ไชยา", "ท่าชนะ", "คีรีรัฐนิคม", "บ้านตาขุน", "พนม", "ท่าฉาง", "บ้านนาสาร", "บ้านนาเดิม", "เคียนซา", "เวียงสระ", "พระแสง", "พุนพิน", "ชัยบุรี", "วิภาวดี"],
-  "สงขลา": ["เมืองสงขลา", "สทิงพระ", "จะนะ", "นาทวี", "เทพา", "สะบ้าย้อย", "ระโนด", "กระแสสินธุ์", "รัตภูมิ", "สะเดา", "หาดใหญ่", "นาหม่อม", "ควนเนียง", "บางกล่ำ", "สิงหนคร", "คลองหอยโข่ง"],
-  "นครศรีธรรมราช": ["เมืองนครศรีธรรมราช", "พรหมคีรี", "ลานสกา", "ฉวาง", "พิปูน", "เชียรใหญ่", "ชะอวด", "ท่าศาลา", "ทุ่งสง", "นาบอน", "ทุ่งใหญ่", "ปากพนัง", "ร่อนพิบูลย์", "สิชล", "ขนอม", "หัวไทร", "บางขัน", "ถ้ำพรรณรา", "จุฬาภรณ์", "พระพรหม", "นบพิตำ", "ช้างกลาง", "เฉลิมพระเกียรติ"],
-  "กระบี่": ["เมืองกระบี่", "เขาพนม", "เกาะลันตา", "คลองท่อม", "อ่าวลึก", "ปลายพระยา", "ลำทับ", "เหนือคลอง"],
-  "พัทลุง": ["เมืองพัทลุง", "กงหรา", "เขาชัยสน", "ตะโหมด", "ควนขนุน", "ปากพะยูน", "ศรีบรรพต", "ป่าบอน", "บางแก้ว", "ป่าพะยอม", "ศรีนครินทร์"],
-  "ตรัง": ["เมืองตรัง", "กันตัง", "ย่านตาขาว", "ปะเหลียน", "สิเกา", "ห้วยยอด", "วังวิเศษ", "นาโยง", "รัษฎา", "หาดสำราญ"],
-  "ชุมพร": ["เมืองชุมพร", "ท่าแซะ", "ปะทิว", "หลังสวน", "ละแม", "พะโต๊ะ", "สวี", "ทุ่งตะโก"],
-  "ระนอง": ["เมืองระนอง", "ละอุ่น", "กะเปอร์", "กระบุรี", "สุขสำราญ"],
 };
 
 // UTM Zone 47N/48N → WGS84
@@ -157,9 +167,11 @@ function MapDrawContent() {
   // Tab + UI
   const [tab, setTab] = useState<Tab>("draw");
   const [basemapOpen, setBasemapOpen] = useState(false);
-  const [basemap, setBasemap] = useState<"sat" | "street" | "topo">("sat");
-  const [status, setStatus] = useState("🌍 แผนที่ลูกโลก — กด \"เริ่มวาดแปลง\" เพื่อบินไปยังประเทศไทย");
+  const [basemap, setBasemap] = useState<"hybrid" | "sat" | "street" | "topo">("hybrid");
+  const [status, setStatus] = useState("🇹🇭 แผนที่ประเทศไทย — เลือกภาค จังหวัด อำเภอ หรือตำบล แล้วกด \"เริ่มวาดแปลง\"");
   const [mapLoaded, setMapLoaded] = useState(false);
+
+
 
   // SHP state
   const [shpFile, setShpFile] = useState<File | null>(null);
@@ -278,7 +290,6 @@ function MapDrawContent() {
     clearDraw();
     setCurrentStep(1);
     setProjectName("");
-    window.location.href = "/map-draw";
   };
 
   // Multi-parcel support
@@ -366,21 +377,65 @@ function MapDrawContent() {
     }
   }, [drawnParcels, getVertFeatures]);
 
+
+
+  // Thailand boundary: show when no region/province selected, hide otherwise
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !mapLoadedRef.current) return;
+    const src = map.getSource("th-boundary") as maplibregl.GeoJSONSource | undefined;
+    if (!src) return;
+    if (selectedRegion || selectedProvince) {
+      src.setData({ type: "FeatureCollection", features: [] });
+      return;
+    }
+    fetch('/api/geojson/th-boundary')
+      .then(r => r.json())
+      .then(fc => { src.setData(fc); })
+      .catch(console.error);
+  }, [selectedRegion, selectedProvince, mapLoaded]);
+
+  // Region boundary: show only the selected region, hide when province chosen
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !mapLoadedRef.current) return;
+    const src = map.getSource("region-boundary") as maplibregl.GeoJSONSource | undefined;
+    if (!src) return;
+    if (!selectedRegion || selectedProvince) {
+      src.setData({ type: "FeatureCollection", features: [] });
+      return;
+    }
+    fetch('/api/geojson/regions')
+      .then(r => r.json())
+      .then((fc: GeoJSON.FeatureCollection) => {
+        const filtered: GeoJSON.FeatureCollection = {
+          type: "FeatureCollection",
+          features: (fc.features || []).filter(f => f.properties?.name_th === selectedRegion),
+        };
+        src.setData(filtered);
+        if (filtered.features.length) zoomToGeoJSONFeatures(filtered.features, map);
+      })
+      .catch(console.error);
+  }, [selectedRegion, selectedProvince, mapLoaded]);
+
   // Update province boundary to show only the selected province
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !mapLoadedRef.current) return;
     const src = map.getSource("province-boundary") as maplibregl.GeoJSONSource | undefined;
     if (!src) return;
-    if (!selectedProvince) {
+    if (!selectedProvince || selectedAmphoe) {
       src.setData({ type: "FeatureCollection", features: [] });
       return;
     }
     fetch(`/api/geojson/boundary?province=${encodeURIComponent(selectedProvince)}`)
       .then(r => r.json())
-      .then(fc => src.setData(fc))
+      .then(fc => {
+        src.setData(fc);
+        if (fc.features) zoomToGeoJSONFeatures(fc.features, map);
+      })
       .catch(console.error);
-  }, [selectedProvince, mapLoaded]);
+  }, [selectedProvince, selectedAmphoe, mapLoaded]);
 
   // Fetch amphoe list from DB when province changes
   useEffect(() => {
@@ -419,12 +474,15 @@ function MapDrawContent() {
     if (!map || !mapLoadedRef.current) return;
     const src = map.getSource("district-boundary") as maplibregl.GeoJSONSource | undefined;
     if (!src) return;
-    if (!selectedAmphoe || !selectedProvince) { src.setData({ type: "FeatureCollection", features: [] }); return; }
+    if (!selectedAmphoe || !selectedProvince || selectedTambon) { src.setData({ type: "FeatureCollection", features: [] }); return; }
     fetch(`/api/geojson/districts?district=${encodeURIComponent(selectedAmphoe)}&province=${encodeURIComponent(selectedProvince)}`)
       .then(r => r.json())
-      .then(fc => src.setData(fc))
+      .then(fc => {
+        src.setData(fc);
+        if (fc.features) zoomToGeoJSONFeatures(fc.features, map);
+      })
       .catch(console.error);
-  }, [selectedAmphoe, selectedProvince, mapLoaded]);
+  }, [selectedAmphoe, selectedProvince, selectedTambon, mapLoaded]);
 
   // Update tambon boundary layer when tambon changes
   useEffect(() => {
@@ -435,7 +493,10 @@ function MapDrawContent() {
     if (!selectedTambon || !selectedAmphoe) { src.setData({ type: "FeatureCollection", features: [] }); return; }
     fetch(`/api/geojson/tambon?tambon=${encodeURIComponent(selectedTambon)}&district=${encodeURIComponent(selectedAmphoe)}`)
       .then(r => r.json())
-      .then(fc => src.setData(fc))
+      .then(fc => {
+        src.setData(fc);
+        if (fc.features) zoomToGeoJSONFeatures(fc.features, map);
+      })
       .catch(console.error);
   }, [selectedTambon, selectedAmphoe, mapLoaded]);
 
@@ -585,7 +646,11 @@ function MapDrawContent() {
       // Detect Right-Click (button === 2) -> Delete Node
       if (e.originalEvent && e.originalEvent.button === 2) {
         e.preventDefault();
-        const features = map.queryRenderedFeatures(e.point, { layers: ['plot-verts-l'] });
+        const bbox: [maplibregl.PointLike, maplibregl.PointLike] = [
+          [e.point.x - 8, e.point.y - 8],
+          [e.point.x + 8, e.point.y + 8]
+        ];
+        const features = map.queryRenderedFeatures(bbox, { layers: ['plot-verts-l'] });
         if (!features.length) return;
         const pIdx = features[0].properties.pIdx;
         const vIdx = features[0].properties.vIdx;
@@ -824,7 +889,11 @@ function MapDrawContent() {
     const onVertsContextMenu = (e: maplibregl.MapMouseEvent) => {
       if (drawingRef.current) return;
       e.preventDefault();
-      const features = map.queryRenderedFeatures(e.point, { layers: ['plot-verts-l'] });
+      const bbox: [maplibregl.PointLike, maplibregl.PointLike] = [
+        [e.point.x - 8, e.point.y - 8],
+        [e.point.x + 8, e.point.y + 8]
+      ];
+      const features = map.queryRenderedFeatures(bbox, { layers: ['plot-verts-l'] });
       if (!features.length) return;
       const pIdx = features[0].properties.pIdx;
       const vIdx = features[0].properties.vIdx;
@@ -1032,6 +1101,14 @@ function MapDrawContent() {
         version: 8,
         glyphs: "https://fonts.openmaptiles.org/{fontstack}/{range}.pbf",
         sources: {
+          hybrid: {
+            type: "raster",
+            tiles: ["https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}"],
+            tileSize: 256,
+            minzoom: 1,
+            maxzoom: 20,
+            attribution: "© Google",
+          },
           sat: {
             type: "raster",
             tiles: ["https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}"],
@@ -1059,13 +1136,14 @@ function MapDrawContent() {
         },
         layers: [
           { id: "background", type: "background", paint: { "background-color": "#ffffff" } },
-          { id: "sat", type: "raster", source: "sat", layout: { visibility: "visible" } },
+          { id: "hybrid", type: "raster", source: "hybrid", layout: { visibility: "visible" } },
+          { id: "sat", type: "raster", source: "sat", layout: { visibility: "none" } },
           { id: "street", type: "raster", source: "street", layout: { visibility: "none" } },
           { id: "topo", type: "raster", source: "topo", layout: { visibility: "none" } },
         ],
       },
-      center: typeof window !== "undefined" && window.innerWidth < 768 ? [101.258, 10.0] : [101.258, 13.5],
-      zoom: typeof window !== "undefined" && window.innerWidth < 768 ? 1.0 : 2,
+      center: [101.258, 13.0],
+      zoom: typeof window !== "undefined" ? (window.innerWidth < 768 ? 1.5 : 2.2) : 2.2,
       minZoom: 0.5,
       maxZoom: 19,
       pitch: 0,
@@ -1094,6 +1172,82 @@ function MapDrawContent() {
       mapLoadedRef.current = true;
       setMapLoaded(true);
 
+
+      // ── Thailand Country Boundary (shown on load, before any selection) ───
+      map.addSource("th-boundary", {
+        type: "geojson",
+        data: { type: "FeatureCollection", features: [] },
+      });
+      map.addLayer({
+        id: "th-boundary-fill",
+        type: "fill",
+        source: "th-boundary",
+        paint: { "fill-color": "#22c55e", "fill-opacity": 0.04 },
+      });
+      map.addLayer({
+        id: "th-boundary-glow",
+        type: "line",
+        source: "th-boundary",
+        paint: {
+          "line-color": "#22c55e",
+          "line-width": ["interpolate", ["linear"], ["zoom"], 4, 6, 8, 12, 12, 20],
+          "line-opacity": ["interpolate", ["linear"], ["zoom"], 4, 0.2, 12, 0.35],
+          "line-blur": ["interpolate", ["linear"], ["zoom"], 4, 4, 12, 10],
+        },
+      });
+      map.addLayer({
+        id: "th-boundary-line",
+        type: "line",
+        source: "th-boundary",
+        paint: {
+          "line-color": "#16a34a",
+          "line-width": ["interpolate", ["linear"], ["zoom"], 4, 1.5, 8, 2.5, 12, 4],
+          "line-opacity": 0.9,
+        },
+      });
+
+      // ── Region Boundaries (shown when region is selected) ──────────────────
+      map.addSource("region-boundary", {
+        type: "geojson",
+        data: { type: "FeatureCollection", features: [] },
+      });
+      map.addLayer({
+        id: "region-boundary-fill",
+        type: "fill",
+        source: "region-boundary",
+        paint: { "fill-color": "#f59e0b", "fill-opacity": 0.06 },
+      });
+      map.addLayer({
+        id: "region-boundary-glow",
+        type: "line",
+        source: "region-boundary",
+        paint: {
+          "line-color": "#f59e0b",
+          "line-width": ["interpolate", ["linear"], ["zoom"], 5, 6, 9, 12, 13, 20],
+          "line-opacity": ["interpolate", ["linear"], ["zoom"], 5, 0.15, 13, 0.3],
+          "line-blur": ["interpolate", ["linear"], ["zoom"], 5, 3, 13, 10],
+        },
+      });
+      map.addLayer({
+        id: "region-boundary-line",
+        type: "line",
+        source: "region-boundary",
+        paint: {
+          "line-color": "#d97706",
+          "line-width": ["interpolate", ["linear"], ["zoom"], 5, 1.5, 9, 2.5, 13, 5],
+          "line-opacity": 0.95,
+        },
+      });
+
+      // Fetch Thailand boundary on initial load
+      fetch('/api/geojson/th-boundary')
+        .then(r => r.json())
+        .then(fc => {
+          const src = map.getSource("th-boundary") as maplibregl.GeoJSONSource | undefined;
+          if (src) src.setData(fc);
+        })
+        .catch(console.error);
+
       // ── Province Boundaries ───────────────────────────────────────────────
       map.addSource("province-boundary", {
         type: "geojson",
@@ -1105,7 +1259,7 @@ function MapDrawContent() {
         type: "line",
         source: "province-boundary",
         paint: {
-          "line-color": "#f97316",
+          "line-color": "#ec4899", // pink-500
           "line-width": ["interpolate", ["linear"], ["zoom"], 6, 6, 10, 12, 14, 20],
           "line-opacity": ["interpolate", ["linear"], ["zoom"], 6, 0.15, 14, 0.3],
           "line-blur": ["interpolate", ["linear"], ["zoom"], 6, 3, 14, 10],
@@ -1117,7 +1271,7 @@ function MapDrawContent() {
         type: "line",
         source: "province-boundary",
         paint: {
-          "line-color": "#f97316",
+          "line-color": "#db2777", // pink-600
           "line-width": ["interpolate", ["linear"], ["zoom"], 6, 1.5, 10, 2.5, 14, 5],
           "line-opacity": 0.95,
         },
@@ -1947,7 +2101,29 @@ function MapDrawContent() {
 
     const onContextMenu = (e: maplibregl.MapMouseEvent) => {
       e.preventDefault();
-      if (!drawingRef.current || vertsRef.current.length < 3) return;
+      if (!drawingRef.current) return;
+
+      const bbox: [maplibregl.PointLike, maplibregl.PointLike] = [
+        [e.point.x - 8, e.point.y - 8],
+        [e.point.x + 8, e.point.y + 8]
+      ];
+      const features = map.queryRenderedFeatures(bbox, { layers: ['draw-verts-l'] });
+      if (features.length) {
+        const f = features[0];
+        const isMid = f.properties?.isMid;
+        const vIdx = f.properties?.vIdx;
+
+        if (!isMid && vIdx !== undefined && vertsRef.current.length > 0) {
+          const newPts = [...vertsRef.current];
+          newPts.splice(vIdx, 1);
+          vertsRef.current = newPts;
+          setVertCount(newPts.length);
+          previewDraw();
+          return;
+        }
+      }
+
+      if (vertsRef.current.length < 3) return;
       finishDraw();
     };
 
@@ -2044,7 +2220,11 @@ function MapDrawContent() {
     const onDrawMouseDown = (e: maplibregl.MapMouseEvent) => {
       if (!drawingRef.current) return;
 
-      const features = map.queryRenderedFeatures(e.point, { layers: ['draw-verts-l'] });
+      const bbox: [maplibregl.PointLike, maplibregl.PointLike] = [
+        [e.point.x - 8, e.point.y - 8],
+        [e.point.x + 8, e.point.y + 8]
+      ];
+      const features = map.queryRenderedFeatures(bbox, { layers: ['draw-verts-l'] });
       if (features.length) {
         const f = features[0];
         const isMid = f.properties?.isMid;
@@ -2155,80 +2335,6 @@ function MapDrawContent() {
               }
             } catch { /* ignore invalid coords */ }
           }
-        }
-      } else {
-        if (selectedTambon) {
-          // Zoom to tambon boundary
-          setSearchLoading(true);
-          try {
-            const res = await fetch(`/api/geojson/tambon?tambon=${encodeURIComponent(selectedTambon)}&district=${encodeURIComponent(selectedAmphoe)}`);
-            const fc = await res.json();
-            if (fc?.features?.length > 0) {
-              let minLng = Infinity, minLat = Infinity, maxLng = -Infinity, maxLat = -Infinity;
-              const walk = (coords: number[]) => {
-                if (typeof coords[0] === "number") {
-                  if (coords[0] < minLng) minLng = coords[0];
-                  if (coords[0] > maxLng) maxLng = coords[0];
-                  if (coords[1] < minLat) minLat = coords[1];
-                  if (coords[1] > maxLat) maxLat = coords[1];
-                } else { (coords as unknown as number[][]).forEach(walk); }
-              };
-              fc.features.forEach((f: GeoJSON.Feature) => walk((f.geometry as GeoJSON.MultiPolygon).coordinates as unknown as number[]));
-              map.fitBounds([[minLng, minLat], [maxLng, maxLat]], { padding: 80, duration: 2200, pitch: 0, bearing: 0, essential: true });
-            }
-          } catch (err) { console.error(err); }
-          setSearchLoading(false);
-        } else if (selectedAmphoe) {
-          // Zoom to district boundary
-          setSearchLoading(true);
-          try {
-            const res = await fetch(`/api/geojson/districts?district=${encodeURIComponent(selectedAmphoe)}&province=${encodeURIComponent(selectedProvince)}`);
-            const fc = await res.json();
-            if (fc?.features?.length > 0) {
-              let minLng = Infinity, minLat = Infinity, maxLng = -Infinity, maxLat = -Infinity;
-              const walk = (coords: number[]) => {
-                if (typeof coords[0] === "number") {
-                  if (coords[0] < minLng) minLng = coords[0];
-                  if (coords[0] > maxLng) maxLng = coords[0];
-                  if (coords[1] < minLat) minLat = coords[1];
-                  if (coords[1] > maxLat) maxLat = coords[1];
-                } else { (coords as unknown as number[][]).forEach(walk); }
-              };
-              fc.features.forEach((f: GeoJSON.Feature) => walk((f.geometry as GeoJSON.MultiPolygon).coordinates as unknown as number[]));
-              map.fitBounds([[minLng, minLat], [maxLng, maxLat]], { padding: 60, duration: 2200, pitch: 0, bearing: 0, essential: true });
-            }
-          } catch (err) { console.error(err); }
-          setSearchLoading(false);
-        } else if (selectedProvince) {
-          setSearchLoading(true);
-          try {
-            const res = await fetch(`/api/geojson/boundary?province=${encodeURIComponent(selectedProvince)}`);
-            const fc = await res.json();
-            if (fc?.features?.length > 0) {
-              const geom = fc.features[0].geometry as GeoJSON.MultiPolygon | GeoJSON.Polygon;
-              let minLng = Infinity, minLat = Infinity, maxLng = -Infinity, maxLat = -Infinity;
-              const walk = (coords: number[]) => {
-                if (typeof coords[0] === "number") {
-                  if (coords[0] < minLng) minLng = coords[0];
-                  if (coords[0] > maxLng) maxLng = coords[0];
-                  if (coords[1] < minLat) minLat = coords[1];
-                  if (coords[1] > maxLat) maxLat = coords[1];
-                } else {
-                  (coords as unknown as number[][]).forEach(walk);
-                }
-              };
-              walk(geom.coordinates as unknown as number[]);
-              map.fitBounds(
-                [[minLng, minLat], [maxLng, maxLat]],
-                { padding: 60, duration: 2500, pitch: 0, bearing: 0, essential: true }
-              );
-            }
-          } catch (err) {
-            console.error(err);
-          }
-          setSearchLoading(false);
-        } else if (map.getZoom() < 10) {
-          map.flyTo({ center: [101.35, 12.80], zoom: 9.5, pitch: 0, bearing: 0, duration: 3000, essential: true, curve: 1.42 });
         }
       }
     }
@@ -2507,7 +2613,11 @@ function MapDrawContent() {
               geom.coordinates[0][0].forEach((coord: any) => bounds.extend(coord));
             }
             if (!bounds.isEmpty()) {
-              map.fitBounds(bounds, { padding: 50, duration: 800 });
+              map.fitBounds(bounds, {
+                padding: 60,
+                duration: 1600,
+                easing: (t) => t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t
+              });
             }
           }
         }
@@ -2713,11 +2823,11 @@ function MapDrawContent() {
   };
 
   // ===== BASEMAP SWITCH =====
-  const switchBasemap = (mode: "sat" | "street" | "topo") => {
+  const switchBasemap = (mode: "hybrid" | "sat" | "street" | "topo") => {
     setBasemap(mode);
     const map = mapRef.current;
     if (!map) return;
-    (["sat", "street", "topo"] as const).forEach((m) => {
+    (["hybrid", "sat", "street", "topo"] as const).forEach((m) => {
       if (map.getLayer(m)) {
         map.setLayoutProperty(m, "visibility", m === mode ? "visible" : "none");
       }
@@ -2788,7 +2898,7 @@ function MapDrawContent() {
     const lats = coords.map(([, y]) => y);
     map.fitBounds(
       [[Math.min(...lngs), Math.min(...lats)], [Math.max(...lngs), Math.max(...lats)]],
-      { padding: 80, duration: 600, maxZoom: 18 },
+      { padding: 80, duration: 1800, maxZoom: 18, easing: (t) => t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t },
     );
   }, []);
 
@@ -2851,14 +2961,16 @@ function MapDrawContent() {
             <span><i className="bi bi-layers me-1" /> แผนที่</span>
             <i className="bi bi-x" style={{ cursor: "pointer", fontSize: 18 }} onClick={() => setBasemapOpen(false)} />
           </div>
-          {(["sat", "street", "topo"] as const).map((m) => (
+          {(["hybrid", "sat", "street", "topo"] as const).map((m) => (
             <div
               key={m}
               className={`mds-basemap-option${basemap === m ? " active" : ""}`}
               onClick={() => switchBasemap(m)}
             >
-              <i className={m === "sat" ? "bi bi-globe-asia-australia" : m === "street" ? "bi bi-map" : "bi bi-tree"} />
-              {m === "sat" ? "ดาวเทียม" : m === "street" ? "ถนน " : "ภูมิประเทศ"}
+              <i className={(m === "hybrid" || m === "sat") ? "bi bi-globe-asia-australia" : m === "street" ? "bi bi-map" : "bi bi-tree"} />
+              {m === "hybrid" ? (
+                <span>ดาวเทียม <br/>(Google map)</span>
+              ) : m === "sat" ? "ดาวเทียม (ดั้งเดิม)" : m === "street" ? "ถนน " : "ภูมิประเทศ"}
             </div>
           ))}
         </div>
@@ -3223,6 +3335,7 @@ function MapDrawContent() {
 
                         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
                           {/* Tabs for Location Method */}
+                          {/*
                           <div style={{ display: "flex", background: "#f1f5f9", borderRadius: 10, padding: 4 }}>
                             <button
                               onClick={() => setLocationMethod("area")}
@@ -3249,6 +3362,7 @@ function MapDrawContent() {
                               <i className="bi bi-crosshair2 me-1" /> กรอกค่าพิกัด
                             </button>
                           </div>
+                          */}
 
                           {locationMethod === "area" ? (
                             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
@@ -3614,7 +3728,14 @@ function MapDrawContent() {
                 drawnGeometry={drawnGeometry}
                 onFlyTo={flyToFeature}
                 onReset={clearDraw}
-                onBack={clearDraw}
+                onBack={() => {
+                  if (drawnParcels.length > 0) {
+                    setStepWarningPopup(true);
+                  } else {
+                    setCurrentStep(1);
+                    setIsPanelOpen(true);
+                  }
+                }}
                 onCancel={cancelSearch}
                 currentStep={currentStep}
                 onStepChange={setCurrentStep}
@@ -3866,6 +3987,7 @@ function MapDrawContent() {
           </div>
         </div>
       )}
+
 
     </div>
   );
