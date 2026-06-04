@@ -1259,7 +1259,7 @@ function MapDrawContent() {
         type: "line",
         source: "province-boundary",
         paint: {
-          "line-color": "#f97316",
+          "line-color": "#ec4899", // pink-500
           "line-width": ["interpolate", ["linear"], ["zoom"], 6, 6, 10, 12, 14, 20],
           "line-opacity": ["interpolate", ["linear"], ["zoom"], 6, 0.15, 14, 0.3],
           "line-blur": ["interpolate", ["linear"], ["zoom"], 6, 3, 14, 10],
@@ -1271,7 +1271,7 @@ function MapDrawContent() {
         type: "line",
         source: "province-boundary",
         paint: {
-          "line-color": "#f97316",
+          "line-color": "#db2777", // pink-600
           "line-width": ["interpolate", ["linear"], ["zoom"], 6, 1.5, 10, 2.5, 14, 5],
           "line-opacity": 0.95,
         },
