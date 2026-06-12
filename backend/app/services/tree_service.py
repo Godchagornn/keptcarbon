@@ -33,8 +33,9 @@ class TreeService:
             }
 
         diff_percent = abs(user_tree_count - calculated_count) / calculated_count
+        positive_diff_percent = (user_tree_count - calculated_count) / calculated_count
 
-        if diff_percent <= TREE_COUNT_VALIDATION_THRESHOLD:
+        if positive_diff_percent <= TREE_COUNT_VALIDATION_THRESHOLD:
             return {
                 "tree_count": user_tree_count,
                 "is_calculated": False,
