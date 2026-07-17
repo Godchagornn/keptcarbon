@@ -19,6 +19,8 @@ export default function Footer() {
         </div>
         <div className="credits">
           Designed by <a href="https://engrids.soc.cmu.ac.th/">EnGRIDs</a>
+          {" & "}
+          <a href="https://turnpro.dev/" target="_blank" rel="noopener noreferrer">turnPROx</a>
         </div>
       </div>
     </footer>

@@ -12,7 +12,6 @@ export default function Header() {
   const [scrolled, setScrolled] = useState(false);
   const [navOpen, setNavOpen] = useState(false);
   const [dropdownOpen, setDropdownOpen] = useState(false);
-  const [homeDropdownOpen, setHomeDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -63,81 +62,65 @@ export default function Header() {
           <nav id="navmenu" className="navmenu">
             {ready && user ? (
               <ul className="d-none d-xl-flex">
-                <li className="dropdown">
-                  <Link
-                    href="/"
-                    className={homeDropdownOpen ? "active" : ""}
-                  >
-                    <span onClick={closeNav}>หน้าแรก</span>
-                    <i
-                      className="bi bi-chevron-down toggle-dropdown"
-                      onClick={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        setHomeDropdownOpen(!homeDropdownOpen);
-                      }}
-                    ></i>
+                <li>
+                  <Link href="/" className={pathname === "/" ? "active" : ""} onClick={closeNav}>
+                    หน้าแรก
                   </Link>
-                  <ul className={homeDropdownOpen ? "dropdown-active" : ""}>
+                </li>
+                <li className="dropdown">
+                  <a href="/about" onClick={closeNav}>
+                    <span>เกี่ยวกับโครงการ</span>
+                    <i className="bi bi-chevron-down toggle-dropdown"></i>
+                  </a>
+                  <ul>
                     <li>
-                      <a href="/#project-about" onClick={closeNav}>เกี่ยวกับโครงการ</a>
+                      <a href="/about#team" onClick={closeNav}>ทีมงานของเรา</a>
                     </li>
                     <li>
-                      <a href="/#team" onClick={closeNav}>ทีมงานของเรา</a>
-                    </li>
-                    <li>
-                      <a href="/#contact" onClick={closeNav}>ติดต่อเรา</a>
+                      <a href="/about#contact" onClick={closeNav}>ติดต่อเรา</a>
                     </li>
                   </ul>
                 </li>
                 <li>
-                  <Link href="/dashboard" onClick={closeNav}>
-                    แดชบอร์ด
+                  <Link href="/map-draw" className={pathname.startsWith("/map-draw") ? "active" : ""} onClick={closeNav}>
+                    ประเมินคาร์บอน
                   </Link>
                 </li>
                 <li>
-                  <Link href="/map-draw" className={pathname.startsWith("/map-draw") ? "active" : ""} onClick={closeNav}>
-                    คำนวณคาร์บอน
+                  <Link href="/dashboard" onClick={closeNav}>
+                    แดชบอร์ด
                   </Link>
                 </li>
               </ul>
             ) : (
               <ul className="d-none d-xl-flex">
-                <li className="dropdown">
-                  <Link
-                    href="/"
-                    className={homeDropdownOpen ? "active" : ""}
-                  >
-                    <span onClick={closeNav}>หน้าแรก</span>
-                    <i
-                      className="bi bi-chevron-down toggle-dropdown"
-                      onClick={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        setHomeDropdownOpen(!homeDropdownOpen);
-                      }}
-                    ></i>
+                <li>
+                  <Link href="/" className={pathname === "/" ? "active" : ""} onClick={closeNav}>
+                    หน้าแรก
                   </Link>
-                  <ul className={homeDropdownOpen ? "dropdown-active" : ""}>
+                </li>
+                <li className="dropdown">
+                  <a href="/about" onClick={closeNav}>
+                    <span>เกี่ยวกับโครงการ</span>
+                    <i className="bi bi-chevron-down toggle-dropdown"></i>
+                  </a>
+                  <ul>
                     <li>
-                      <a href="/#project-about" onClick={closeNav}>เกี่ยวกับโครงการ</a>
+                      <a href="/about#team" onClick={closeNav}>ทีมงานของเรา</a>
                     </li>
                     <li>
-                      <a href="/#team" onClick={closeNav}>ทีมงานของเรา</a>
-                    </li>
-                    <li>
-                      <a href="/#contact" onClick={closeNav}>ติดต่อเรา</a>
+                      <a href="/about#contact" onClick={closeNav}>ติดต่อเรา</a>
                     </li>
                   </ul>
                 </li>
                 <li>
-                  <Link href="/dashboard" onClick={closeNav}>
-                    แดชบอร์ด
+                  <Link href="/map-draw" className={pathname.startsWith("/map-draw") ? "active" : ""} onClick={closeNav}>
+                    ประเมินคาร์บอน
                   </Link>
                 </li>
                 <li>
-                  <Link href="/map-draw" className={pathname.startsWith("/map-draw") ? "active" : ""} onClick={closeNav}>
-                    คำนวณคาร์บอน
+                  <Link href="/dashboard" onClick={closeNav}>
+                    แดชบอร์ด
                   </Link>
                 </li>
               </ul>
@@ -295,7 +278,7 @@ export default function Header() {
                 <i className="bi bi-grid"></i> แดชบอร์ด
               </Link>
               <Link href="/map-draw" className={`drawer-nav-item ${pathname.startsWith('/map-draw') ? 'active' : ''}`} onClick={closeNav}>
-                <i className="bi bi-map"></i> คำนวณคาร์บอน
+                <i className="bi bi-map"></i> ประเมินคาร์บอน
               </Link>
 
               {ready && user && (
@@ -311,13 +294,13 @@ export default function Header() {
               )}
 
               <div className="drawer-nav-category">ข้อมูลอ้างอิง</div>
-              <Link href="/#project-about" className="drawer-nav-item" onClick={closeNav}>
+              <Link href="/about" className="drawer-nav-item" onClick={closeNav}>
                 <i className="bi bi-file-earmark-text"></i> เกี่ยวกับโครงการ
               </Link>
-              <Link href="/#team" className="drawer-nav-item" onClick={closeNav}>
+              <Link href="/about#team" className="drawer-nav-item" onClick={closeNav}>
                 <i className="bi bi-person-badge"></i> ทีมงานของเรา
               </Link>
-              <Link href="/#contact" className="drawer-nav-item" onClick={closeNav}>
+              <Link href="/about#contact" className="drawer-nav-item" onClick={closeNav}>
                 <i className="bi bi-chat-dots"></i> ติดต่อเรา
               </Link>
 

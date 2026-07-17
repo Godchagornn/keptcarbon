@@ -359,26 +359,23 @@ body.on-home:not(.scrolled) .header .logo img {
     height: 60px;
     max-height: 60px;
     filter:
-      drop-shadow(0 0 8px rgba(255, 255, 255, 1))
-      drop-shadow(0 0 20px rgba(255, 255, 255, 0.8))
-      drop-shadow(0 3px 10px rgba(0, 0, 0, 0.7))
-      brightness(1.25);
+      drop-shadow(0 0 8px rgba(255, 255, 255, 1)) drop-shadow(0 0 20px rgba(255, 255, 255, 0.8)) drop-shadow(0 3px 10px rgba(0, 0, 0, 0.7)) brightness(1.25);
   }
 }
 
-body.on-home:not(.scrolled) .navmenu > ul > li > a,
-body.on-home:not(.scrolled) .navmenu > ul > li > a:focus {
+body.on-home:not(.scrolled) .navmenu>ul>li>a,
+body.on-home:not(.scrolled) .navmenu>ul>li>a:focus {
   color: rgba(255, 255, 255, 0.95);
   text-shadow: 0 1px 6px rgba(0, 0, 0, 0.6);
 }
 
-body.on-home:not(.scrolled) .navmenu > ul > li:hover > a,
-body.on-home:not(.scrolled) .navmenu > ul > li > .active,
-body.on-home:not(.scrolled) .navmenu > ul > li > .active:focus {
+body.on-home:not(.scrolled) .navmenu>ul>li:hover>a,
+body.on-home:not(.scrolled) .navmenu>ul>li>.active,
+body.on-home:not(.scrolled) .navmenu>ul>li>.active:focus {
   color: #4ade80;
 }
 
-body.on-home:not(.scrolled) .navmenu > ul > li > a::after {
+body.on-home:not(.scrolled) .navmenu>ul>li>a::after {
   background-color: #4ade80;
 }
 
@@ -592,7 +589,8 @@ body.on-home:not(.scrolled) .header .mobile-nav-toggle {
 
   /* ── Drawer Panel ── */
   .navmenu ul {
-    display: flex !important; /* always rendered, controlled by transform */
+    display: flex !important;
+    /* always rendered, controlled by transform */
     flex-direction: column;
     list-style: none;
     position: fixed;
@@ -790,7 +788,7 @@ body.on-home:not(.scrolled) .header .mobile-nav-toggle {
     pointer-events: auto;
   }
 
-  .mobile-nav-active .navmenu > ul {
+  .mobile-nav-active .navmenu>ul {
     transform: translateX(0);
   }
 
